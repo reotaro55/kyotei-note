@@ -54,4 +54,5 @@ def send_article(article: dict, deadline: str):
     if article.get("tags"):
         send(article["tags"])
     if article.get("x"):
-        send("🐦 X投稿用（URLを差し替えて投稿）\n" + article["x"])
+        send("🐦 ↓X投稿用（URLを差し替えて投稿）")
+        send(article["x"])
