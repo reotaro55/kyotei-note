@@ -150,10 +150,14 @@ def cmd_test():
                       w: {"waku": w, "name": f"選手{w}", "class": "A1" if w == 1 else "B1",
                           "win_rate": 7.5 - w * 0.5, "local_win_rate": 7.0, "avg_st": 0.15,
                           "motor2": 40.0, "F": 0} for w in range(1, 7)}}
-        art = writer.build_article("pre", sample, ["1-2-3"])
-        log(f"ChatGPT接続OK（無料部分 {len(art['free'])}字）")
+        facts = writer._facts("pre", sample, ["1-2-3"])
+        if writer._llm(facts):
+            notify.send(f"✅ ChatGPT（{config.OPENAI_MODEL}）との接続もOK！")
+        else:
+            notify.send(f"⚠️ ChatGPT（{config.OPENAI_MODEL}）に接続できませんでした。"
+                        "キー・支払い設定・モデル名を確認してください（記事は定型文で作られます）")
     else:
-        log("OPENAI_API_KEY 未設定（テンプレート文で動きます）")
+        notify.send("ℹ️ OpenAIのキーは未設定です（記事は定型文で作られます）")
 
 
 def main():
