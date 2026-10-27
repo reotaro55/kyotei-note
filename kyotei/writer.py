@@ -68,23 +68,32 @@ def _facts(kind, race, bets, before=None, tenji_ranks=None, post_notes=None):
         "1号艇の信頼度(100点満点)": race["score"],
         "ポイント": post_notes or race["notes"],
         "買い目": bets,
+        "本命の1着艇": int(bets["本命"][0][0]),
+        "穴の1着艇": int(bets["穴"][0][0]),
         "選手データ": rows,
         "気象": (before or {}).get("weather", {}),
     }
 
 
-PROMPT = """あなたは競艇予想noteのライターです。以下のデータだけを根拠に、記事の文章を書いてください。
+PROMPT = """あなたは競艇予想noteブランド「艇眼｜TEIGAN」のライターです。
+キャッチコピーは「強い艇を探すな。勝つ展開を見抜け。」。
+以下のデータだけを根拠に、記事の文章を書いてください。
+
+文体:
+- 1行は短く（25字前後まで）、言い切りの体言止め・常体でテンポよく
+- 例:「実力だけでは決まらない一戦。」「スタートから1マークの攻防、2・3着の残り目まで読み込んだ。」
 
 ルール:
 - データにない数字や情報を作らない
 - 「絶対」「必ず」「確実」「100%」「儲かる」など的中や利益を保証する表現は使わない
-- 買い目は書き換えない（文章内で触れる場合はデータの通りに）
-- 買い目は「本命」（一番強い艇が1着）と「穴」（二番手の艇が1着）の2本立て
-- 読みやすい日本語、です・ます調
+- 買い目は「本命」（本命の1着艇が逃げ・先マイ）と「穴」（穴の1着艇が差し・まくり等で勝つ）の2本立て
 
 出力はJSONのみ:
-{"free": "無料部分（120〜180字。レースの見どころ。買い目や本命・穴の艇番は書かない）",
- "reason": "有料部分の根拠（300〜450字。本命の1着艇を推す理由と、穴の1着艇が勝つ展開。データの数字を使う）"}
+{"hook": "見出しの一言（20字以内。⚡は付けない）",
+ "lines": ["無料部分の短い文を3〜4行。レースの見どころ。艇番・選手名・買い目は書かない"],
+ "tenkai": ["有料部分の展開予想を3〜5行。どの艇がどう動くか。データの数字を1〜2個使う"],
+ "honmei": "本命の根拠を1行（30字以内）",
+ "ana": "穴の根拠を1行（30字以内）"}
 
 データ:
 """
@@ -126,7 +135,7 @@ def _llm(facts: dict) -> dict | None:
             text = r.json()["choices"][0]["message"]["content"] or ""
             m = re.search(r"\{.*\}", text, re.S)
             out = json.loads(m.group(0) if m else text)
-            if out.get("free") and out.get("reason"):
+            if out.get("hook") and out.get("lines") and out.get("tenkai"):
                 return out
             LAST_ERROR = "返ってきた文章の形式が想定と違いました"
             break
@@ -137,15 +146,23 @@ def _llm(facts: dict) -> dict | None:
     return None
 
 
+HOOKS = ["実力と機力がぶつかる一戦。", "勝負どころを見極める。", "展開ひとつで景色が変わる。", "1マークの攻防がカギ。"]
+
+
 def _template(facts: dict) -> dict:
-    b1 = facts["選手データ"][0]
-    free = (f"{facts['場']}{facts['レース']}は1号艇{b1['選手']}選手（{b1['級別']}）に注目。"
-            f"全国勝率{b1['全国勝率']:.2f}と、メンバーの中で地力上位の存在です。"
-            f"インからの逃げが本線になるレースと見ています。")
-    reason = ("■ポイント\n" + "\n".join(f"・{n}" for n in facts["ポイント"]) +
-              f"\n\n1号艇の信頼度は{facts['1号艇の信頼度(100点満点)']}点。"
-              "勝率・モーター・コースから1着候補を2艇に絞り、本命と穴の2本立てにしました。")
-    return {"free": free, "reason": reason}
+    rows = {r["枠"]: r for r in facts["選手データ"]}
+    hm, an = rows[facts["本命の1着艇"]], rows[facts["穴の1着艇"]]
+    i = int(facts["レース"].rstrip("R")) % len(HOOKS)
+    return {
+        "hook": HOOKS[i],
+        "lines": ["機力・スタート・進入・展開を総合的に評価。",
+                  "人気順だけでは拾いきれない可能性も探った。"],
+        "tenkai": [f"{hm['枠']}号艇{hm['選手']}が主導権を握る展開が本線。",
+                   f"全国勝率{hm['全国勝率']:.2f}、モーター2連率{hm['モーター2連率']:.1f}%。",
+                   f"崩れるなら{an['枠']}号艇{an['選手']}の一撃。"],
+        "honmei": f"{hm['枠']}号艇の地力と機力を信頼。",
+        "ana": f"{an['枠']}号艇が攻めて主導権を奪う展開。",
+    }
 
 
 def _data_table(facts: dict) -> str:
@@ -161,23 +178,38 @@ def _data_table(facts: dict) -> str:
     return "\n".join(lines)
 
 
+def _para(lines) -> str:
+    """noteで読みやすいよう、1行ごとに空行を入れる。"""
+    return "\n\n".join(clean_ng(str(x)).strip() for x in lines if str(x).strip())
+
+
 def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=None) -> dict:
     facts = _facts(kind, race, bets, before, tenji_ranks, post_notes)
-    text = _llm(facts) or _template(facts)
-    free = clean_ng(text["free"]).strip()
-    reason = clean_ng(text["reason"]).strip()
-    free_part = f"{free}\n\n1号艇の信頼度：{stars(race['score'])}"
+    t = _llm(facts) or _template(facts)
+    price = config.PRICE_PRE if kind == "pre" else config.PRICE_POST
+    head = (f"🔥 艇眼｜本日の注目レース" if kind == "pre"
+            else f"🔥 艇眼｜{race.get('grade', '')}{race['venue']}{race['rno']}R 展示後予想")
+    hd = race.get("hd", "")
+    date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
+    top = [f"🚤 {date}{race['venue']}{race['rno']}R"]
+    if race.get("title"):
+        top.append(f"🏆 {race['title']}")
+    free_lines = [f"⚡ {t['hook']}"] + list(t["lines"])
     if kind == "post":
-        free_part += "\n展示タイム・スタート展示を反映した最終予想です。"
-    paid_part = (
-        "■買い目（3連単 6点）\n"
-        "【本命】\n" + "\n".join(bets["本命"]) + "\n"
-        "【穴】\n" + "\n".join(bets["穴"]) +
-        f"\n\n■根拠\n{reason}\n\n■データ\n{_data_table(facts)}\n\n{config.DISCLAIMER}"
-    )
-    return {
-        "title": make_title(kind, race),
-        "price": config.PRICE_PRE if kind == "pre" else config.PRICE_POST,
-        "free": free_part,
-        "paid": paid_part,
-    }
+        free_lines.append("👁️ 展示タイム・スタート展示まで反映した最終判断。")
+    free_lines += ["🔥 本命と穴、異なる展開を想定して6点に絞る。",
+                   "🎯 本命3点＋穴3点",
+                   f"🔐 ここから有料予想【{price}円】"]
+    free_part = head + "\n\n" + "\n".join(top) + "\n\n" + _para(free_lines)
+
+    paid_part = "\n\n".join([
+        "🔥 展開予想",
+        _para(t["tenkai"]),
+        "🎯 本命（3点）\n" + "\n".join(bets["本命"]),
+        clean_ng(t["honmei"]),
+        "💣 穴（3点）\n" + "\n".join(bets["穴"]),
+        clean_ng(t["ana"]),
+        "📊 データ\n" + _data_table(facts),
+        config.DISCLAIMER,
+    ])
+    return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part}

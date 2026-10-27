@@ -152,7 +152,7 @@ def cmd_test():
                           "motor2": 40.0 - w, "F": 0} for w in range(1, 7)}}
         notify.send("👇 貼り付け練習用のサンプル記事です（noteで余白の位置に有料ラインが収まるか確認してください）")
         notify.send_article(writer.build_article("pre", sample, scoring.pre_bets(sample["boats"])), "10:00")
-        facts = writer._facts("pre", sample, ["1-2-3"])
+        facts = writer._facts("pre", sample, scoring.pre_bets(sample["boats"]))
         if writer._llm(facts):
             notify.send(f"✅ ChatGPT（{config.OPENAI_MODEL}）との接続もOK！")
         else:
