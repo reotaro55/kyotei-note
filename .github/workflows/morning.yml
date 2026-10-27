@@ -1,7 +1,7 @@
 name: 朝の事前予想
 on:
   schedule:
-    - cron: "17 21 * * *"   # 毎日 6:17（日本時間）
+    - cron: "41 20 * * *"   # 毎日 5:41（日本時間）。混雑で30分ほど遅れることがあるので早めに
   workflow_dispatch:
 jobs:
   run:
