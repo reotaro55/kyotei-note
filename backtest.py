@@ -160,6 +160,8 @@ def main():
         out.append(f"  {m}: {ret / inv * 100:.0f}%" if inv else f"  {m}: -")
     text = "\n".join(out)
     print(text)
+    os.makedirs("reports", exist_ok=True)
+    open("reports/backtest_latest.txt", "w").write(text + "\n")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         open(os.environ["GITHUB_STEP_SUMMARY"], "a").write("```\n" + text + "\n```\n")
     notify.send(text)

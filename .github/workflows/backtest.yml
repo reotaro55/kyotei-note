@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       months: { description: "何か月分さかのぼるか", default: "12" }
+permissions:
+  contents: write
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -22,3 +24,14 @@ jobs:
       - run: python backtest.py --months "${{ inputs.months }}"
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      - name: 結果を reports ブランチに保存
+        run: |
+          cp reports/backtest_latest.txt /tmp/bt.txt
+          git config user.name "kyotei-bot"
+          git config user.email "kyotei-bot@users.noreply.github.com"
+          git fetch origin reports || true
+          git switch reports 2>/dev/null || git switch --orphan reports
+          git rm -rq --cached . 2>/dev/null || true
+          mkdir -p reports && cp /tmp/bt.txt reports/backtest_latest.txt
+          cp /tmp/bt.txt "reports/backtest_$(date +%Y%m%d_%H%M).txt"
+          git add reports && git commit -qm "backtest result" && git push -q origin reports
