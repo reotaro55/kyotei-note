@@ -154,8 +154,8 @@ def cmd_test():
         if writer._llm(facts):
             notify.send(f"✅ ChatGPT（{config.OPENAI_MODEL}）との接続もOK！")
         else:
-            notify.send(f"⚠️ ChatGPT（{config.OPENAI_MODEL}）に接続できませんでした。"
-                        "キー・支払い設定・モデル名を確認してください（記事は定型文で作られます）")
+            notify.send(f"⚠️ ChatGPT（{config.OPENAI_MODEL}）に接続できませんでした（記事は定型文で作られます）\n"
+                        f"理由: {writer.LAST_ERROR}")
     else:
         notify.send("ℹ️ OpenAIのキーは未設定です（記事は定型文で作られます）")
 

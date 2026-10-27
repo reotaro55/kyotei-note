@@ -88,27 +88,50 @@ PROMPT = """あなたは競艇予想noteのライターです。以下のデー�
 """
 
 
+LAST_ERROR = ""
+
+
 def _llm(facts: dict) -> dict | None:
+    """ChatGPTに文章を書かせる。失敗したら None（理由は LAST_ERROR に残す）。"""
+    global LAST_ERROR
+    LAST_ERROR = ""
     if not config.OPENAI_API_KEY:
+        LAST_ERROR = "キー未設定"
         return None
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
-            json={
-                "model": config.OPENAI_MODEL,
-                "messages": [{"role": "user", "content": PROMPT + json.dumps(facts, ensure_ascii=False)}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.7,
-            },
-            timeout=60,
-        )
-        r.raise_for_status()
-        out = json.loads(r.json()["choices"][0]["message"]["content"])
-        if out.get("free") and out.get("reason"):
-            return out
-    except Exception as e:  # 失敗してもテンプレートで続行する
-        print(f"ChatGPT API エラー（テンプレート文で代用）: {type(e).__name__}")
+    body = {
+        "model": config.OPENAI_MODEL,
+        "messages": [{"role": "user", "content": PROMPT + json.dumps(facts, ensure_ascii=False)}],
+        "response_format": {"type": "json_object"},
+    }
+    for attempt in range(2):
+        try:
+            r = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
+                json=body, timeout=90,
+            )
+            if r.status_code != 200:
+                try:
+                    msg = r.json().get("error", {}).get("message", "")
+                except ValueError:
+                    msg = r.text[:200]
+                LAST_ERROR = f"HTTP {r.status_code}: {msg[:300]}"
+                # JSON指定に未対応のモデルなら外して再挑戦
+                if attempt == 0 and "response_format" in msg:
+                    body.pop("response_format", None)
+                    continue
+                break
+            text = r.json()["choices"][0]["message"]["content"] or ""
+            m = re.search(r"\{.*\}", text, re.S)
+            out = json.loads(m.group(0) if m else text)
+            if out.get("free") and out.get("reason"):
+                return out
+            LAST_ERROR = "返ってきた文章の形式が想定と違いました"
+            break
+        except Exception as e:  # 失敗してもテンプレートで続行する
+            LAST_ERROR = f"{type(e).__name__}: {str(e)[:200]}"
+            break
+    print(f"ChatGPT API エラー（テンプレート文で代用）: {LAST_ERROR}")
     return None
 
 
