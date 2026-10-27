@@ -86,6 +86,8 @@ def parse_index(soup: BeautifulSoup) -> list[dict]:
             "name": VENUES.get(jcd, jcd),
             "timeframe": timeframe,
             "cancelled": "中止" in text,
+            "grade": ("SG" if "is-SG" in classes else "G1" if "is-G1" in classes
+                      else "G2" if "is-G2" in classes else "G3" if "is-G3" in classes else ""),
         })
     return venues
 

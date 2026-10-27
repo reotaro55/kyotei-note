@@ -35,10 +35,11 @@ def stars(score: float) -> str:
 
 
 def make_title(kind: str, race: dict) -> str:
-    b1 = race["boats"].get(1, {})
-    label = "事前予想" if kind == "pre" else "展示後予想"
-    return (f"【{label}】{race['venue']}{race['rno']}R｜1号艇 {b1.get('name', '')}"
-            f"（{b1.get('class', '')}）｜締切{race['deadline']}")
+    """艇眼のタイトル形式: 🔥🚤【艇眼】10/28 SG尼崎6R｜展示後予想⚡"""
+    hd = race.get("hd", "")
+    date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
+    label = "事前予想" if kind == "pre" else "激アツ展示後予想"
+    return f"🔥🚤【艇眼】{date}{race.get('grade', '')}{race['venue']}{race['rno']}R｜{label}⚡"
 
 
 def _facts(kind, race, bets, before=None, tenji_ranks=None, post_notes=None):

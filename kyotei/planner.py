@@ -38,6 +38,7 @@ def build_plan(hd: str, log=print) -> dict:
             score, notes = scoring.pre_score(rl["boats"])
             item = {
                 "jcd": v["jcd"], "venue": v["name"], "timeframe": v["timeframe"],
+                "grade": v.get("grade", ""), "hd": hd,
                 "rno": r["rno"], "deadline": r["deadline"], "title": rl["title"],
                 "boats": rl["boats"], "score": score, "notes": notes,
             }
