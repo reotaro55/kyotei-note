@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       months: { description: "何か月分さかのぼるか", default: "12" }
+      start: { description: "開始日 YYYY-MM-DD（空なら months を使う）", default: "" }
+      end: { description: "終了日 YYYY-MM-DD（空なら昨日）", default: "" }
 permissions:
   contents: write
 jobs:
@@ -21,7 +23,11 @@ jobs:
           path: history_cache
           key: history-${{ github.run_id }}
           restore-keys: history-
-      - run: python backtest.py --months "${{ inputs.months }}"
+      - run: |
+          args="--months ${{ inputs.months }}"
+          [ -n "${{ inputs.start }}" ] && args="$args --start ${{ inputs.start }}"
+          [ -n "${{ inputs.end }}" ] && args="$args --end ${{ inputs.end }}"
+          python backtest.py $args
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       - name: 結果を reports ブランチに保存

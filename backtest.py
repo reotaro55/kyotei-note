@@ -132,10 +132,14 @@ def main():
     ap.add_argument("--months", type=int, default=12)
     ap.add_argument("--cache", default="history_cache")
     ap.add_argument("--sleep", type=float, default=1.0)
+    ap.add_argument("--start", help="YYYY-MM-DD（指定時は --months より優先）")
+    ap.add_argument("--end", help="YYYY-MM-DD")
     a = ap.parse_args()
 
-    end = datetime.now(ZoneInfo("Asia/Tokyo")).date() - timedelta(days=1)
-    start = end - timedelta(days=round(a.months * 30.4))
+    end = (date.fromisoformat(a.end) if a.end
+           else datetime.now(ZoneInfo("Asia/Tokyo")).date() - timedelta(days=1))
+    start = (date.fromisoformat(a.start) if a.start
+             else end - timedelta(days=round(a.months * 30.4)))
     pre_s, post_s = Stat(), Stat()
     pre_b = defaultdict(Stat)
     var = {k: defaultdict(VStat) for k in ("pre", "post", "all")}
