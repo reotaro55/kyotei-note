@@ -43,7 +43,7 @@ GAP = "\n" * 6   # 無料部分と有料部分の間の余白（有料ライン�
 
 def send_article(article: dict, deadline: str):
     send(f"━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}\n"
-         f"↓ タイトル → 本文（無料＋余白＋有料）→ ハッシュタグの順に届きます")
+         f"↓ タイトル → 本文（無料＋余白＋有料）→ ハッシュタグ → X投稿用の順に届きます")
     send(article["title"])
     body = article["free"] + GAP + article["paid"]
     if len(body) <= 1900:
@@ -53,3 +53,5 @@ def send_article(article: dict, deadline: str):
         send(article["paid"])
     if article.get("tags"):
         send(article["tags"])
+    if article.get("x"):
+        send("🐦 X投稿用（URLを差し替えて投稿）\n" + article["x"])

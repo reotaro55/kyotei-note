@@ -255,7 +255,34 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
         config.DISCLAIMER,
     ])
     return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part,
-            "tags": make_tags(kind, race)}
+            "tags": make_tags(kind, race), "x": make_x_post(kind, race, hook, price)}
+
+
+def x_len(text: str) -> int:
+    """Xの文字数（日本語などは2、英数字は1。URLは23）。"""
+    text = re.sub(r"https?://\S+", "x" * 23, text)
+    return sum(1 if ord(c) < 0x1100 else 2 for c in text)
+
+
+def make_x_post(kind: str, race: dict, hook: str, price: int) -> str:
+    """X（旧Twitter）告知用の短文。noteのURLは公開後にアニキが貼る。"""
+    hd = race.get("hd", "")
+    date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
+    label = "事前予想" if kind == "pre" else "展示後予想"
+    lines = [
+        f"🔥【艇眼】{date}{race.get('grade', '')}{race['venue']}{race['rno']}R {label}",
+        f"⚡{hook}",
+        f"🎯本命3点＋穴3点｜{price}円",
+        f"⏰締切 {race['deadline']}",
+        "👇続きはnoteで",
+        "（ここにnoteのURL）",
+        "#競艇予想 #ボートレース",
+    ]
+    text = "\n".join(lines)
+    while x_len(text.replace("（ここにnoteのURL）", "https://note.com/x")) > 280 and len(lines) > 5:
+        lines.pop(3)  # 長いときは締切の行から削る
+        text = "\n".join(lines)
+    return text
 
 
 # noteで記事数の多い競艇系タグ（2026年10月時点）
@@ -271,3 +298,22 @@ def make_tags(kind: str, race: dict) -> str:
     tags.append("事前予想" if kind == "pre" else "展示後予想")
     tags.append("艇眼")
     return " ".join("#" + t for t in tags)
+
+
+def make_x_roundup(hd: str, races: list[dict]) -> str:
+    """朝のまとめ投稿。入りきる分だけレースを並べる。"""
+    date = f"{int(hd[4:6])}/{int(hd[6:8])}"
+    head = [f"☀️【艇眼】{date} 本日の事前予想 全{len(races)}R", ""]
+    tail = ["", f"🎯各レース本命3点＋穴3点｜{config.PRICE_PRE}円", "👇noteで公開中",
+            "（ここにnoteのURL）", "#競艇予想 #ボートレース"]
+    body, rest = [], 0
+    for i, r in enumerate(races):
+        line = f"🚤{r['deadline']} {r.get('grade', '')}{r['venue']}{r['rno']}R"
+        cand = head + body + [line] + ([f"ほか{len(races) - i - 1}R"] if i < len(races) - 1 else []) + tail
+        if x_len("\n".join(cand).replace("（ここにnoteのURL）", "https://note.com/x")) > 280:
+            rest = len(races) - i
+            break
+        body.append(line)
+    if rest:
+        body.append(f"ほか{rest}R")
+    return "\n".join(head + body + tail)

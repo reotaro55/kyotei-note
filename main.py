@@ -34,6 +34,7 @@ def log(msg: str):
 def cmd_morning(hd: str):
     plan = planner.build_plan(hd, log)
     sent = 0
+    sent_races = []
     for race in plan["pre"]:
         if at(hd, race["deadline"]) < now() + timedelta(minutes=10):
             log(f"{race['venue']}{race['rno']}R は締切が近いのでスキップ")
@@ -41,8 +42,11 @@ def cmd_morning(hd: str):
         bets = scoring.pre_bets(race["boats"])
         article = writer.build_article("pre", race, bets)
         notify.send_article(article, race["deadline"])
+        sent_races.append(race)
         sent += 1
         log(f"事前予想 送信: {race['venue']}{race['rno']}R（{race['score']}点）")
+    if sent_races:
+        notify.send("🐦 X投稿用（本日のまとめ）\n" + writer.make_x_roundup(hd, sent_races))
     lines = [f"☀️ 本日の事前予想 {sent}本を送りました。締切前に公開してください。"]
     if plan["post"]:
         lines.append("\n🔍 展示後予想の対象（展示が出たら自動で届きます）")
