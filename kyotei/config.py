@@ -19,10 +19,7 @@ PRE_MIN_SCORE = 55
 POST_MIN_SCORE = 55
 
 # ---- 買い目 ----
-PRE_SECOND = 2   # 事前: 2着候補の数  → 1-AB-ABC… の形
-PRE_THIRD = 4    # 事前: 3着候補の数（2着候補を含む）
-POST_SECOND = 2  # 展示後
-POST_THIRD = 3
+# 本命3点＋穴3点の6点（kyotei/scoring.py の make_bets）
 
 # ---- 展示後予想の監視 ----
 WATCH_START_MIN = 40   # 締切の何分前から展示データを見に行くか

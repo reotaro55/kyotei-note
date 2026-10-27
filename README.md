@@ -55,7 +55,7 @@ Actions → 「接続テスト」→ Run workflow。Discordに「テスト送信
 
 - 本数：`PRE_MAX`（事前の最大）、`POST_MAX`（展示後の最大）
 - 厳しさ：`PRE_MIN_SCORE` / `POST_MIN_SCORE`（上げると厳選される）
-- 買い目の点数：`PRE_SECOND` / `PRE_THIRD`（事前は今 6点）、`POST_SECOND` / `POST_THIRD`（展示後は今 4点）
+- 買い目：本命3点＋穴3点（`kyotei/scoring.py` の `make_bets`）
 - 価格：`PRICE_PRE` / `PRICE_POST`
 
 点数の付け方は `kyotei/scoring.py` の `pre_score`（出走表）と `post_score`（展示）。

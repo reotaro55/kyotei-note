@@ -122,7 +122,7 @@ def cmd_results(hd: str):
             if not res or res["cancelled"]:
                 continue
             n += 1
-            bet += len(bets) * 100
+            bet += len(scoring.flat(bets)) * 100
             if scoring.is_hit(bets, res["trifecta"]):
                 hit += 1
                 ret += res["payout"]

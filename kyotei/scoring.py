@@ -1,9 +1,7 @@
-"""1号艇の信頼度スコアと買い目（3連単・1着1号艇固定）を作る。
+"""1号艇の信頼度スコア（レースの厳選用）と、買い目（本命3点＋穴3点）を作る。
 
 点数の付け方はアニキの感覚に合わせて自由に調整してOK。
 """
-from itertools import permutations
-
 from . import config
 
 CLASS_BONUS = {"A1": 15, "A2": 8, "B1": 0, "B2": -10}
@@ -79,22 +77,54 @@ def post_score(boats: dict, before: dict) -> tuple[float, list[str], bool]:
     return round(_clip(s, 0, 100), 1), notes, skip
 
 
-def make_bets(boats: dict, n_second: int, n_third: int, before: dict | None = None) -> list[str]:
-    """1-{2着候補}-{3着候補} の3連単。"""
+COURSE_BONUS = {1: 25, 2: 8, 3: 6, 4: 4, 5: 0, 6: -3}  # インほど1着を取りやすい
+
+
+def _courses(before: dict | None) -> dict[int, int]:
+    """艇番 → 進入コース。展示前は枠なり。"""
+    if before and before.get("start"):
+        m = {v["boat"]: c for c, v in before["start"].items() if v.get("boat")}
+        if len(m) >= 5:
+            return m
+    return {}
+
+
+def strength(b: dict, course: int, tenji_rank: int | None = None) -> float:
+    """1着になる力のざっくりした点数。"""
+    s = b["win_rate"] * 10 + (b.get("local_win_rate") or b["win_rate"]) * 3
+    s += b["motor2"] * 0.3 + CLASS_BONUS.get(b["class"], 0)
+    s += COURSE_BONUS.get(course, 0)
+    if tenji_rank:
+        s += {1: 8, 2: 5, 3: 2, 5: -3, 6: -5}.get(tenji_rank, 0)
+    return s
+
+
+def make_bets(boats: dict, before: dict | None = None) -> dict[str, list[str]]:
+    """本命3点＋穴3点の3連単。
+
+    本命: 一番強い艇が1着
+    穴　: 二番手の艇が1着（本命艇を2・3着に残す形）
+    """
     ranks = _tenji_ranks(before) if before else {}
-    others = [b for w, b in boats.items() if w != 1]
-    others.sort(key=lambda b: _partner_score(b, ranks.get(b["waku"])), reverse=True)
-    picks = [b["waku"] for b in others]
-    seconds, thirds = picks[:n_second], picks[:n_third]
-    bets = []
-    for a, c in permutations(thirds, 2):
-        if a in seconds:
-            bets.append(f"1-{a}-{c}")
-    return bets
+    courses = _courses(before)
+    order = sorted(
+        boats.values(),
+        key=lambda b: strength(b, courses.get(b["waku"], b["waku"]), ranks.get(b["waku"])),
+        reverse=True,
+    )
+    w = [b["waku"] for b in order]
+    a, h, x, y = w[0], w[1], w[2], w[3]
+    honmei = [f"{a}-{h}-{x}", f"{a}-{x}-{h}", f"{a}-{h}-{y}"]
+    ana = [f"{h}-{a}-{x}", f"{h}-{x}-{a}", f"{h}-{a}-{y}"]
+    return {"本命": honmei, "穴": ana}
 
 
-def is_hit(bets: list[str], trifecta: str) -> bool:
-    return trifecta in bets
+def flat(bets: dict[str, list[str]]) -> list[str]:
+    return [t for v in bets.values() for t in v]
+
+
+def is_hit(bets, trifecta: str) -> bool:
+    return trifecta in (flat(bets) if isinstance(bets, dict) else bets)
 
 
 def tenji_ranks(before: dict) -> dict[int, int]:
@@ -103,8 +133,8 @@ def tenji_ranks(before: dict) -> dict[int, int]:
 
 # 便利関数
 def pre_bets(boats):
-    return make_bets(boats, config.PRE_SECOND, config.PRE_THIRD)
+    return make_bets(boats)
 
 
 def post_bets(boats, before):
-    return make_bets(boats, config.POST_SECOND, config.POST_THIRD, before)
+    return make_bets(boats, before)
