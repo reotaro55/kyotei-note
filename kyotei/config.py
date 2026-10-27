@@ -34,7 +34,7 @@ REQUEST_SLEEP_SEC = 1.0   # 公式サイトへの負荷を抑えるための待�
 
 # ---- 外部サービス（GitHubのSecretsで設定） ----
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "") or "gpt-4o-mini"
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "") or "gpt-6-luna"
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
 # ---- 記事末尾に必ず付ける注意書き ----
