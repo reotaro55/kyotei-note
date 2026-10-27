@@ -1,7 +1,8 @@
 """DiscordでiPhoneに届ける。
 
-1記事を「案内」「タイトル」「無料部分」「有料部分」の4メッセージに分けて送る。
-iPhoneのDiscordでメッセージを長押し →「テキストをコピー」→ noteに貼り付け。
+1記事を「案内」「タイトル」「本文」の3メッセージで送る。
+本文は無料部分と有料部分の間に空行を入れてあり、noteに丸ごと貼ると
+有料ラインがその余白に収まる。
 """
 import time
 
@@ -37,9 +38,16 @@ def send(text: str):
         text = text[cut:].lstrip("\n")
 
 
+GAP = "\n" * 6   # 無料部分と有料部分の間の余白（有料ラインがここに収まる）
+
+
 def send_article(article: dict, deadline: str):
     send(f"━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}\n"
-         f"↓ タイトル・無料部分・有料部分の順に届きます")
+         f"↓ タイトル → 本文（無料＋余白＋有料）の順に届きます")
     send(article["title"])
-    send(article["free"])
-    send(article["paid"])
+    body = article["free"] + GAP + article["paid"]
+    if len(body) <= 1900:
+        _post(body)
+    else:  # 長すぎるときだけ、余白の位置で2通に分ける
+        send(article["free"])
+        send(article["paid"])
