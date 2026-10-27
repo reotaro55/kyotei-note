@@ -1,0 +1,33 @@
+name: 展示後予想の監視
+on:
+  schedule:
+    - cron: "17 1 * * *"    # 10:17 開始 → 締切15:30までのレース
+    - cron: "47 5 * * *"    # 14:47 開始 → 締切15:30〜18:30
+    - cron: "47 8 * * *"    # 17:47 開始 → 締切18:30以降（ナイター）
+  workflow_dispatch:
+    inputs:
+      t_from: { description: "締切がこの時刻以降（例 15:30）", default: "00:00" }
+      t_to:   { description: "締切がこの時刻より前（例 18:30）", default: "24:00" }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - name: 監視する時間帯を決める
+        id: win
+        run: |
+          case "${{ github.event.schedule }}" in
+            "17 1 * * *") echo "from=00:00" >> $GITHUB_OUTPUT; echo "to=15:30" >> $GITHUB_OUTPUT ;;
+            "47 5 * * *") echo "from=15:30" >> $GITHUB_OUTPUT; echo "to=18:30" >> $GITHUB_OUTPUT ;;
+            "47 8 * * *") echo "from=18:30" >> $GITHUB_OUTPUT; echo "to=24:00" >> $GITHUB_OUTPUT ;;
+            *) echo "from=${{ inputs.t_from }}" >> $GITHUB_OUTPUT; echo "to=${{ inputs.t_to }}" >> $GITHUB_OUTPUT ;;
+          esac
+      - run: python main.py watch --from "${{ steps.win.outputs.from }}" --to "${{ steps.win.outputs.to }}"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
