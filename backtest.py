@@ -92,6 +92,37 @@ class Stat:
         ]
 
 
+# 買い目の別パターン（どれも6点）。w = 強い順の艇番
+VARIANTS = {
+    "現行(本命3+穴3)": lambda w: [f"{w[0]}-{w[1]}-{w[2]}", f"{w[0]}-{w[2]}-{w[1]}", f"{w[0]}-{w[1]}-{w[3]}",
+                               f"{w[1]}-{w[0]}-{w[2]}", f"{w[1]}-{w[2]}-{w[0]}", f"{w[1]}-{w[0]}-{w[3]}"],
+    "本命6点(頭固定・相手3艇)": lambda w: [f"{w[0]}-{a}-{b}" for a in w[1:4] for b in w[1:4] if a != b],
+    "本命4+穴2": lambda w: [f"{w[0]}-{w[1]}-{w[2]}", f"{w[0]}-{w[2]}-{w[1]}", f"{w[0]}-{w[1]}-{w[3]}",
+                          f"{w[0]}-{w[2]}-{w[3]}", f"{w[1]}-{w[0]}-{w[2]}", f"{w[2]}-{w[0]}-{w[1]}"],
+    "本命3+頭崩れ3(2着に本命)": lambda w: [f"{w[0]}-{w[1]}-{w[2]}", f"{w[0]}-{w[2]}-{w[1]}", f"{w[0]}-{w[1]}-{w[3]}",
+                                    f"{w[1]}-{w[0]}-{w[2]}", f"{w[2]}-{w[0]}-{w[1]}", f"{w[3]}-{w[0]}-{w[1]}"],
+    "本命3+本命消し3(高配当)": lambda w: [f"{w[0]}-{w[1]}-{w[2]}", f"{w[0]}-{w[2]}-{w[1]}", f"{w[0]}-{w[1]}-{w[3]}",
+                                   f"{w[1]}-{w[2]}-{w[3]}", f"{w[1]}-{w[3]}-{w[2]}", f"{w[2]}-{w[1]}-{w[3]}"],
+}
+
+
+class VStat:
+    def __init__(self):
+        self.n = self.hit = self.ret = 0
+
+    def add(self, combos, res):
+        self.n += 1
+        got = [pay for c, pay, _ in res["trifecta"] if c in combos]
+        if got:
+            self.hit += 1
+            self.ret += sum(got)
+
+    def line(self, name):
+        if not self.n:
+            return f"  {name}: -"
+        return f"  {name}: 的中{self.hit / self.n * 100:.1f}% 回収{self.ret / (self.n * 600) * 100:.1f}%"
+
+
 def bucket(score):
     return "75点以上" if score >= 75 else "65〜75点" if score >= 65 else "55〜65点" if score >= 55 else "55点未満"
 
@@ -107,6 +138,7 @@ def main():
     start = end - timedelta(days=round(a.months * 30.4))
     pre_s, post_s = Stat(), Stat()
     pre_b = defaultdict(Stat)
+    var = {k: defaultdict(VStat) for k in ("pre", "post", "all")}
     month = defaultdict(lambda: [0, 0])  # 月 → [投資, 払戻]（事前＋展示後）
     days = skipped_post = 0
 
@@ -117,12 +149,22 @@ def main():
         if b_txt and k_txt:
             days += 1
             results = history.parse_k(k_txt)
-            pre, post = daily_plan(history.parse_b(b_txt))
+            b_races = history.parse_b(b_txt)
+            pre, post = daily_plan(b_races)
+            for r in b_races:  # 比較用: 厳選なしで全レースを買った場合
+                res = results.get((r["jcd"], r["rno"]))
+                if res and not res["cancelled"] and res["trifecta"] and len(res["tenji"]) == 6:
+                    w = scoring.ranking(r["boats"])
+                    for name, f in VARIANTS.items():
+                        var["all"][name].add(f(w), res)
             for r in pre:
                 res = results.get((r["jcd"], r["rno"]))
                 if not res or res["cancelled"] or not res["trifecta"] or len(res["tenji"]) < 6:
                     continue
                 bets = scoring.pre_bets(r["boats"])
+                w = scoring.ranking(r["boats"])
+                for name, f in VARIANTS.items():
+                    var["pre"][name].add(f(w), res)
                 before_ret = pre_s.ret
                 pre_s.add(bets, res)
                 pre_b[bucket(r["score"])].add(bets, res)
@@ -138,6 +180,9 @@ def main():
                     skipped_post += 1
                     continue
                 bets = scoring.post_bets(r["boats"], before)
+                w = scoring.ranking(r["boats"], before)
+                for name, f in VARIANTS.items():
+                    var["post"][name].add(f(w), res)
                 before_ret = post_s.ret
                 post_s.add(bets, res)
                 month[f"{d:%Y-%m}"][0] += 600
@@ -154,6 +199,9 @@ def main():
         s = pre_b.get(k)
         if s and s.n:
             out.append(f"  {k}: {s.n:,}R 的中{s.pct(s.hit, s.n)} 回収{s.pct(s.ret, s.n * 600)}")
+    for kind, label in (("pre", "事前"), ("post", "展示後"), ("all", "厳選なし・全レース・出走表のみ")):
+        out += ["", f"■買い目パターン比較（{label}・6点）"]
+        out += [var[kind][name].line(name) for name in VARIANTS]
     out += ["", "■月別の回収率（事前＋展示後）"]
     for m in sorted(month):
         inv, ret = month[m]

@@ -99,6 +99,18 @@ def strength(b: dict, course: int, tenji_rank: int | None = None) -> float:
     return s
 
 
+def ranking(boats: dict, before: dict | None = None) -> list[int]:
+    """1着になる力の順に艇番を並べる。"""
+    ranks = _tenji_ranks(before) if before else {}
+    courses = _courses(before)
+    order = sorted(
+        boats.values(),
+        key=lambda b: strength(b, courses.get(b["waku"], b["waku"]), ranks.get(b["waku"])),
+        reverse=True,
+    )
+    return [b["waku"] for b in order]
+
+
 def make_bets(boats: dict, before: dict | None = None) -> dict[str, list[str]]:
     """本命3点＋穴3点の3連単。
 
