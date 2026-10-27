@@ -212,4 +212,20 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
         "📊 データ\n" + _data_table(facts),
         config.DISCLAIMER,
     ])
-    return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part}
+    return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part,
+            "tags": make_tags(kind, race)}
+
+
+# noteで記事数の多い競艇系タグ（2026年10月時点）
+#   #競艇予想 約330万 / #競艇 約240万 / #ボートレース 約175万
+#   #競艇予想屋 約98万 / #ボートレース予想 約92万
+BASE_TAGS = ["競艇予想", "競艇", "ボートレース", "競艇予想屋", "ボートレース予想"]
+
+
+def make_tags(kind: str, race: dict) -> str:
+    tags = BASE_TAGS + [f"{race['venue']}競艇"]
+    if race.get("grade") in ("SG", "G1"):
+        tags.append(race["grade"])
+    tags.append("事前予想" if kind == "pre" else "展示後予想")
+    tags.append("艇眼")
+    return " ".join("#" + t for t in tags)
