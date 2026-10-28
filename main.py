@@ -35,7 +35,20 @@ def cmd_morning(hd: str):
     plan = planner.build_plan(hd, log)
     sent = 0
     sent_races = []
+    # いちばん自信のあるレース（スコア最上位・締切まで余裕あり）はXで無料公開
+    ok = [r for r in plan["pre"] if at(hd, r["deadline"]) > now() + timedelta(minutes=60)]
+    free = max(ok, key=lambda r: r["score"]) if ok else None
+    if free:
+        bets = scoring.pre_bets(free["boats"])
+        art = writer.build_article("pre", free, bets)
+        notify.send(f"━━━━━━━━━━\n🆓 X無料予想用｜{free['venue']}{free['rno']}R（本日いちばん自信のあるレース）\n"
+                    "↓1通目を投稿 → 2通目以降をその投稿へのリプライで続けてください")
+        for post in writer.make_x_free(free, bets, art):
+            notify.send(post)
+        ledger.record(hd, "morning", free, "pre", bets)
     for race in plan["pre"]:
+        if free and race is free:
+            continue
         if at(hd, race["deadline"]) < now() + timedelta(minutes=10):
             log(f"{race['venue']}{race['rno']}R は締切が近いのでスキップ")
             continue

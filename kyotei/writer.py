@@ -29,6 +29,27 @@ def clean_ng(text: str) -> str:
     return text
 
 
+def compact(combos: list[str]) -> list[str]:
+    """3連単の買い目をまとめ表記にする。例: 1-3-5,1-5-3,1-3-2 → 1-35-35, 1-3-2"""
+    rest = list(combos)
+    out = []
+    for c in list(rest):
+        if c not in rest:
+            continue
+        a, b, d = c.split("-")
+        rev = f"{a}-{d}-{b}"
+        if rev in rest and rev != c:
+            out.append(f"{a}-{b}{d}-{b}{d}")
+            rest.remove(c)
+            rest.remove(rev)
+    groups = {}
+    for c in rest:
+        a, b, d = c.split("-")
+        groups.setdefault((a, b), []).append(d)
+    out += [f"{a}-{b}-{''.join(ds)}" for (a, b), ds in groups.items()]
+    return out
+
+
 def stars(score: float) -> str:
     n = 5 if score >= 85 else 4 if score >= 70 else 3 if score >= 55 else 2
     return "★" * n + "☆" * (5 - n)
@@ -276,16 +297,18 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
         _para(t["tenkai"]),
         "📝 各艇寸評\n" + "\n".join(f"{'①②③④⑤⑥'[i]}{clean_ng(str(c)).strip()}"
                                     for i, c in enumerate(list(t.get("kanpyo") or [])[:6])),
-        ("🎯 暫定・本命（3点）\n" if presale else "🎯 本命（3点）\n") + "\n".join(bets["本命"]),
+        ("🎯 暫定・本命（3点）\n" if presale else "🎯 本命（3点）\n") + "\n".join(compact(bets["本命"])),
         clean_ng(t["honmei"]),
-        ("💣 暫定・穴（3点）\n" if presale else "💣 穴（3点）\n") + "\n".join(bets["穴"]),
+        ("💣 暫定・穴（3点）\n" if presale else "💣 穴（3点）\n") + "\n".join(compact(bets["穴"])),
         clean_ng(t["ana"]),
         "💰 配分の目安：本命◎厚め（2）：穴○（1）",
         "📊 データ\n" + _data_table(facts),
         config.DISCLAIMER,
     ])
     return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part,
-            "tags": make_tags(kind, race), "x": make_x_post(kind, race, hook, price)}
+            "tags": make_tags(kind, race), "x": make_x_post(kind, race, hook, price),
+            "kanpyo": [clean_ng(str(c)).strip() for c in list(t.get("kanpyo") or [])[:6]],
+            "tenkai": [clean_ng(str(c)).strip() for c in t["tenkai"]]}
 
 
 def x_len(text: str) -> int:
@@ -402,8 +425,42 @@ def make_final_append(race: dict, provisional: dict, final: dict, before: dict, 
     lines.append(f"本命の{'①②③④⑤⑥'[hm - 1]}は展示タイム{ranks.get(hm, '-')}位。"
                  + ("暫定買い目のまま勝負。" if same else "展示を見て買い目を修正。"))
     lines += [
-        "🎯 最終・本命（3点）\n" + "\n".join(final["本命"]),
-        "💣 最終・穴（3点）\n" + "\n".join(final["穴"]),
+        "🎯 最終・本命（3点）\n" + "\n".join(compact(final["本命"])),
+        "💣 最終・穴（3点）\n" + "\n".join(compact(final["穴"])),
         "💰 配分の目安：本命◎厚め（2）：穴○（1）",
     ]
     return "\n\n".join(lines)
+
+
+def make_x_free(race: dict, bets: dict, article: dict) -> list[str]:
+    """X用の無料予想（スレッド）。1通目=買い目、2通目以降=寸評。"""
+    hd = race.get("hd", "")
+    date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
+    main = "\n".join([
+        f"🆓【艇眼・本日の無料予想】",
+        f"{date}{race.get('grade', '')}{race['venue']}{race['rno']}R【締切{race['deadline']}】",
+        "",
+        "🎯本命 " + " ".join(compact(bets["本命"])),
+        "💣穴 " + " ".join(compact(bets["穴"])),
+        "",
+        (article.get("tenkai") or [""])[0],
+        "",
+        "寸評はリプ欄👇",
+        "#競艇予想 #ボートレース #無料予想",
+    ])
+    posts = [main]
+    cur = []
+    for i, c in enumerate(article.get("kanpyo") or []):
+        line = f"{'①②③④⑤⑥'[i]}{c}"
+        if cur and x_len("\n".join(cur + [line])) > 270:
+            posts.append("\n".join(cur))
+            cur = []
+        cur.append(line)
+    tail = "🔥ほかの厳選レースはnoteで公開中\n（ここにnoteのプロフィールURL）"
+    if cur and x_len("\n".join(cur + ["", tail])) <= 280:
+        posts.append("\n".join(cur + ["", tail]))
+    else:
+        if cur:
+            posts.append("\n".join(cur))
+        posts.append(tail)
+    return posts
