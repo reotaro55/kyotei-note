@@ -245,7 +245,9 @@ def _para(lines) -> str:
     return "\n\n".join(clean_ng(str(x)).strip() for x in lines if str(x).strip())
 
 
-def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=None) -> dict:
+def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=None,
+                  presale: bool = False) -> dict:
+    """presale=True: 展示後予想を展示前に販売する「予約版」（暫定買い目入り、展示後に追記）。"""
     facts = _facts(kind, race, bets, before, tenji_ranks, post_notes)
     t = _llm(facts) or _template(facts)
     price = config.PRICE_PRE if kind == "pre" else config.PRICE_POST
@@ -258,21 +260,25 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
         top.append(f"🏆 {race['title']}")
     hook, lines = _safe_free(t, race["rno"])
     free_lines = [f"⚡ {hook}"] + list(lines)
-    if kind == "post":
+    if presale:
+        free_lines.append(f"👁️ 展示航走を見て、締切10分前ごろに最終買い目を追記（締切{race['deadline']}）。"
+                          "購入後、時間になったらページを再読み込みしてください。")
+    elif kind == "post":
         free_lines.append("👁️ 展示タイム・スタート展示まで反映した最終判断。")
     free_lines += ["🔥 本命と穴、異なる展開を想定して6点に絞る。",
                    "🎯 本命3点＋穴3点",
                    f"🔐 ここから有料予想【{price}円】"]
     free_part = head + "\n\n" + "\n".join(top) + "\n\n" + _para(free_lines)
 
-    paid_part = "\n\n".join([
+    paid_part = "\n\n".join(([
+        "🕐 展示前の暫定見解（展示後に最終買い目を下に追記します）"] if presale else []) + [
         "🔥 展開予想",
         _para(t["tenkai"]),
         "📝 各艇寸評\n" + "\n".join(f"{'①②③④⑤⑥'[i]}{clean_ng(str(c)).strip()}"
                                     for i, c in enumerate(list(t.get("kanpyo") or [])[:6])),
-        "🎯 本命（3点）\n" + "\n".join(bets["本命"]),
+        ("🎯 暫定・本命（3点）\n" if presale else "🎯 本命（3点）\n") + "\n".join(bets["本命"]),
         clean_ng(t["honmei"]),
-        "💣 穴（3点）\n" + "\n".join(bets["穴"]),
+        ("💣 暫定・穴（3点）\n" if presale else "💣 穴（3点）\n") + "\n".join(bets["穴"]),
         clean_ng(t["ana"]),
         "💰 配分の目安：本命◎厚め（2）：穴○（1）",
         "📊 データ\n" + _data_table(facts),
@@ -372,3 +378,32 @@ def make_hit_report(e: dict, res: dict) -> tuple[str, str]:
         "#競艇予想 #ボートレース #的中",
     ])
     return note, x
+
+
+def make_final_append(race: dict, provisional: dict, final: dict, before: dict, ranks: dict) -> str:
+    """展示後に、予約版の記事の一番下へ追記する文。"""
+    now_hhmm = race.get("now", "")
+    st = {v.get("boat"): (c, v.get("st")) for c, v in before.get("start", {}).items()}
+    tenji = []
+    for w in range(1, 7):
+        t = before["boats"].get(w, {}).get("tenji_time")
+        if t:
+            tenji.append(f"{'①②③④⑤⑥'[w - 1]}{t:.2f}（{ranks.get(w, '-')}位）")
+    order = "".join(str(v.get("boat")) for c, v in sorted(before.get("start", {}).items()))
+    same = final == provisional
+    lines = [
+        "━━━━━━━━━━",
+        f"🔄 展示後の最終判断{f'（{now_hhmm}追記）' if now_hhmm else ''}",
+        "👁️ 展示タイム\n" + " ".join(tenji),
+    ]
+    if order:
+        lines.append(f"🚤 スタート展示の進入：{order[:3]}／{order[3:]}")
+    hm = int(final["本命"][0][0])
+    lines.append(f"本命の{'①②③④⑤⑥'[hm - 1]}は展示タイム{ranks.get(hm, '-')}位。"
+                 + ("暫定買い目のまま勝負。" if same else "展示を見て買い目を修正。"))
+    lines += [
+        "🎯 最終・本命（3点）\n" + "\n".join(final["本命"]),
+        "💣 最終・穴（3点）\n" + "\n".join(final["穴"]),
+        "💰 配分の目安：本命◎厚め（2）：穴○（1）",
+    ]
+    return "\n\n".join(lines)

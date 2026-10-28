@@ -49,11 +49,32 @@ def cmd_morning(hd: str):
     if sent_races:
         notify.send("🐦 ↓X投稿用（本日のまとめ）")
         notify.send(writer.make_x_roundup(hd, sent_races))
+    presold = send_presale(hd, plan)
     lines = [f"☀️ 本日の事前予想 {sent}本を送りました。締切前に公開してください。"]
     if plan["post"]:
-        lines.append("\n🔍 展示後予想の対象（展示が出たら自動で届きます）")
+        lines.append(f"\n🕐 展示後予想（予約版）{presold}本も送りました。展示が出たら追記用が届きます")
         lines += [f"・{r['deadline']} {r['venue']}{r['rno']}R" for r in plan["post"]]
     notify.send("\n".join(lines))
+
+
+def send_presale(hd: str, plan: dict) -> int:
+    """展示後予想の「予約版」を送る（展示後に追記用の文が届く）。"""
+    presold = 0
+    for race in plan["post"]:
+        if at(hd, race["deadline"]) < now() + timedelta(minutes=30):
+            continue
+        bets = scoring.pre_bets(race["boats"])
+        article = writer.build_article("post", race, bets, presale=True)
+        notify.send(f"━━━━━━━━━━\n🕐 展示後予想【予約版】｜{config.PRICE_POST}円｜締切 {race['deadline']}\n"
+                    "朝のうちに公開OK。展示が出たら「🔄追記用」が届くので、記事の一番下に追記してください")
+        notify.send_article(article, race["deadline"])
+        presold += 1
+    return presold
+
+
+def cmd_presale(hd: str):
+    n = send_presale(hd, planner.build_plan(hd, log))
+    notify.send(f"🕐 展示後予想（予約版）を{n}本送りました。展示が出たら追記用が届きます")
 
 
 # ------------------------------------------------------------------ 展示後
@@ -82,20 +103,15 @@ def cmd_watch(hd: str, t_from: str, t_to: str):
                 continue
             if not before["ready"]:
                 continue
-            score, notes, skip = scoring.post_score(race["boats"], before)
+            score, notes, _ = scoring.post_score(race["boats"], before)
             pending.remove(race)
-            if skip or score < config.POST_MIN_SCORE:
-                reason = " / ".join(notes[-2:])
-                notify.send(f"🙅 {name}（締切{race['deadline']}）は展示を見て見送り推奨。\n理由: {reason}")
-                log(f"{name}: 見送り（{score}点）")
-                continue
-            race = dict(race, score=score)
-            bets = scoring.post_bets(race["boats"], before)
-            article = writer.build_article(
-                "post", race, bets, before, scoring.tenji_ranks(before), notes)
-            notify.send_article(article, race["deadline"])
-            ledger.record(hd, "watch" + t_from.replace(":", ""), race, "post", bets)
-            log(f"展示後予想 送信: {name}（{score}点）")
+            race = dict(race, score=score, now=f"{now():%H:%M}")
+            final = scoring.post_bets(race["boats"], before)
+            provisional = scoring.pre_bets(race["boats"])
+            notify.send(f"🔄 追記用｜{name}（締切{race['deadline']}）\n↓ 予約版の記事の一番下に追記してください")
+            notify.send(writer.make_final_append(race, provisional, final, before, scoring.tenji_ranks(before)))
+            ledger.record(hd, "watch" + t_from.replace(":", ""), race, "post", final)
+            log(f"展示後の追記 送信: {name}（{score}点）")
         if pending:
             time.sleep(config.WATCH_INTERVAL_SEC)
     log("監視終了")
@@ -190,7 +206,7 @@ def cmd_test():
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["morning", "watch", "results", "test"])
+    p.add_argument("command", choices=["morning", "presale", "watch", "results", "test"])
     p.add_argument("--date", help="YYYYMMDD（省略で今日）")
     p.add_argument("--from", dest="t_from", default="00:00")
     p.add_argument("--to", dest="t_to", default="24:00")
@@ -201,6 +217,8 @@ def main():
             cmd_morning(hd)
         elif a.command == "watch":
             cmd_watch(hd, a.t_from, a.t_to)
+        elif a.command == "presale":
+            cmd_presale(hd)
         elif a.command == "results":
             cmd_results(hd)
         else:
