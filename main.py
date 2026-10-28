@@ -170,6 +170,38 @@ def _race_direct(hd: str, jcd: str, rno: int) -> dict | None:
             "boats": rl["boats"], "score": score, "notes": notes}
 
 
+def cmd_resend(hd: str, venue: str, from_rno: int):
+    """朝に送った事前予想のうち、指定した場・レースの記事から後ろを全部作り直して送る（買い目は同じ）。"""
+    jcd = next((k for k, v in scraper.VENUES.items() if v == venue or k == venue.zfill(2)), venue)
+    rows = [e for e in ledger.load(hd) if e["kind"] == "pre"]
+    if rows:
+        rows = rows[1:]  # 先頭はX無料予想用（noteの記事は送っていない）
+        targets = [(e["jcd"], e["rno"], e["deadline"]) for e in rows]
+    else:
+        log("朝の記録が見つからないので厳選をやり直します")
+        plan = planner.build_plan(hd, log)
+        targets = [(r["jcd"], r["rno"], r["deadline"]) for r in plan["pre"]]
+    targets = sorted(set(targets), key=lambda t: (t[2], t[0]))
+    start = next((i for i, t in enumerate(targets) if t[0] == jcd and t[1] >= from_rno), None)
+    if start is None:
+        notify.send(f"⚠️ 今朝の事前予想に{venue}{from_rno}R以降が見つかりませんでした")
+        return
+    targets = targets[start:]
+    log(f"送り直し対象: {len(targets)}レース")
+    n = 0
+    for t_jcd, rno, _ in targets:
+        race = _race_direct(hd, t_jcd, rno)
+        if not race:
+            continue
+        if at(hd, race["deadline"]) < now() + timedelta(minutes=10):
+            log(f"{race['venue']}{rno}R は締切が近いのでスキップ")
+            continue
+        bets = scoring.pre_bets(race["boats"])
+        notify.send_article(writer.build_article("pre", race, bets), race["deadline"])
+        n += 1
+    notify.send(f"✏️ {venue}{from_rno}R以降の事前予想 {n}本を、文章を直して送り直しました（買い目は朝と同じ）。")
+
+
 # ------------------------------------------------------------------ 結果
 def cmd_results(hd: str):
     entries = ledger.load(hd)
@@ -259,12 +291,14 @@ def cmd_test():
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["morning", "presale", "watch", "results", "test"])
+    p.add_argument("command", choices=["morning", "presale", "watch", "results", "test", "resend"])
     p.add_argument("--date", help="YYYYMMDD（省略で今日）")
     p.add_argument("--from", dest="t_from", default="00:00")
     p.add_argument("--to", dest="t_to", default="24:00")
     p.add_argument("--only", default="", help="例: 13-11,13-12（場コード-レース番号）")
     p.add_argument("--full", action="store_true", help="展示後に記事をまるごと送る")
+    p.add_argument("--venue", default="", help="resend用: 場名（例: 尼崎）")
+    p.add_argument("--from-rno", type=int, default=1, help="resend用: 何Rから")
     a = p.parse_args()
     hd = a.date or now().strftime("%Y%m%d")
     try:
@@ -274,6 +308,8 @@ def main():
             cmd_watch(hd, a.t_from, a.t_to, a.only, a.full)
         elif a.command == "presale":
             cmd_presale(hd)
+        elif a.command == "resend":
+            cmd_resend(hd, a.venue, a.from_rno)
         elif a.command == "results":
             cmd_results(hd)
         else:
