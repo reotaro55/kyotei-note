@@ -6,6 +6,8 @@
 """
 import time
 
+GAP = "\n" * 6   # 無料部分と有料部分の間の余白（有料ラインがここに収まる）
+
 import requests
 
 from . import config
@@ -38,21 +40,26 @@ def send(text: str):
         text = text[cut:].lstrip("\n")
 
 
-GAP = "\n" * 6   # 無料部分と有料部分の間の余白（有料ラインがここに収まる）
+def _label(text: str):
+    """コピーしやすいよう、各パーツの前に区切りを入れる。"""
+    _post(f"\u200b\n──────── {text} ────────")
 
 
 def send_article(article: dict, deadline: str):
-    send(f"━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}\n"
-         f"↓ タイトル → 本文（無料＋余白＋有料）→ ハッシュタグ → X投稿用の順に届きます")
+    send(f"━━━━━━━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}")
+    _label("📌 タイトル")
     send(article["title"])
+    _label("📄 本文（無料＋余白＋有料）")
     body = article["free"] + GAP + article["paid"]
     if len(body) <= 1900:
         _post(body)
     else:  # 長すぎるときだけ、余白の位置で2通に分ける
         send(article["free"])
+        _label("📄 本文の続き（有料部分）")
         send(article["paid"])
     if article.get("tags"):
+        _label("#️⃣ ハッシュタグ")
         send(article["tags"])
     if article.get("x"):
-        send("🐦 ↓X投稿用（URLを差し替えて投稿）")
+        _label("🐦 X投稿用（URLを差し替えて投稿）")
         send(article["x"])
