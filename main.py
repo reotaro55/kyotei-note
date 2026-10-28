@@ -104,9 +104,10 @@ def cmd_watch(hd: str, t_from: str, t_to: str):
 # ------------------------------------------------------------------ 結果
 def cmd_results(hd: str):
     entries = ledger.load(hd)
-    if not entries:  # 記録が無いとき（手動実行など）は、同じ計算をやり直す
-        log("送った買い目の記録が無いので、計算し直して集計します")
-        entries = _recompute_entries(hd)
+    kinds = {e["kind"] for e in entries}
+    if kinds != {"pre", "post"}:  # 記録が無い分（手動実行など）は、同じ計算をやり直す
+        log(f"記録が無い種類を計算し直します（記録あり: {sorted(kinds)}）")
+        entries += [e for e in _recompute_entries(hd) if e["kind"] not in kinds]
     summary = {"pre": [0, 0, 0, 0], "post": [0, 0, 0, 0]}  # レース数, 的中, 投資, 払戻
     hits = []
     for e in entries:
