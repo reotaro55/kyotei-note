@@ -91,8 +91,20 @@ def cmd_presale(hd: str):
 
 
 # ------------------------------------------------------------------ 展示後
-def cmd_watch(hd: str, t_from: str, t_to: str):
+def cmd_watch(hd: str, t_from: str, t_to: str, only: str = "", full: bool = False):
+    """only="13-11,13-12" で指定レースだけ監視。full=True なら追記用ではなく記事をまるごと送る。"""
     plan = planner.build_plan(hd, log)
+    ov = _override(hd)
+    if not only and ov:
+        only, full = ov.get("only", ""), bool(ov.get("full"))
+        log(f"今日だけの設定を適用: {ov}")
+    if only:
+        want = {tuple(x.split("-")) for x in only.split(",")}
+        found = [r for r in plan["post"] + plan["pre"] if (r["jcd"], str(r["rno"])) in want]
+        for jcd, rno in want - {(r["jcd"], str(r["rno"])) for r in found}:
+            found.append(_race_direct(hd, jcd, int(rno)))
+        plan["post"] = [r for r in found if r]
+        log(f"指定レースだけ監視: {[(r['venue'], r['rno']) for r in plan['post']]}")
     pending = [r for r in plan["post"]
                if t_from <= r["deadline"] < t_to
                and at(hd, r["deadline"]) > now() + timedelta(minutes=config.WATCH_GIVEUP_MIN)]
@@ -121,13 +133,41 @@ def cmd_watch(hd: str, t_from: str, t_to: str):
             race = dict(race, score=score, now=f"{now():%H:%M}")
             final = scoring.post_bets(race["boats"], before)
             provisional = scoring.pre_bets(race["boats"])
-            notify.send(f"🔄 追記用｜{name}（締切{race['deadline']}）\n↓ 予約版の記事の一番下に追記してください")
-            notify.send(writer.make_final_append(race, provisional, final, before, scoring.tenji_ranks(before)))
+            if full:
+                article = writer.build_article("post", race, final, before, scoring.tenji_ranks(before), notes)
+                notify.send_article(article, race["deadline"])
+            else:
+                notify.send(f"🔄 追記用｜{name}（締切{race['deadline']}）\n↓ 予約版の記事の一番下に追記してください")
+                notify.send(writer.make_final_append(race, provisional, final, before, scoring.tenji_ranks(before)))
             ledger.record(hd, "watch" + t_from.replace(":", ""), race, "post", final)
             log(f"展示後の追記 送信: {name}（{score}点）")
         if pending:
             time.sleep(config.WATCH_INTERVAL_SEC)
     log("監視終了")
+
+
+def _override(hd: str) -> dict:
+    """daily_override.json に今日の日付があれば、その日だけの設定を返す。"""
+    import json, os
+    if os.path.exists("daily_override.json"):
+        ov = json.load(open("daily_override.json"))
+        if ov.get("date") == hd:
+            return ov
+    return {}
+
+
+def _race_direct(hd: str, jcd: str, rno: int) -> dict | None:
+    """厳選に入っていないレースを直接取りに行く。"""
+    try:
+        races = {r["rno"]: r for r in scraper.fetch_raceindex(jcd, hd)}
+        rl = scraper.fetch_racelist(jcd, rno, hd)
+    except scraper.ScrapeError as e:
+        log(f"{jcd}-{rno}: 取得失敗 {e}")
+        return None
+    score, notes = scoring.pre_score(rl["boats"])
+    return {"jcd": jcd, "venue": scraper.VENUES.get(jcd, jcd), "timeframe": "day", "grade": "", "hd": hd,
+            "rno": rno, "deadline": races.get(rno, {}).get("deadline", "23:59"), "title": rl["title"],
+            "boats": rl["boats"], "score": score, "notes": notes}
 
 
 # ------------------------------------------------------------------ 結果
@@ -223,13 +263,15 @@ def main():
     p.add_argument("--date", help="YYYYMMDD（省略で今日）")
     p.add_argument("--from", dest="t_from", default="00:00")
     p.add_argument("--to", dest="t_to", default="24:00")
+    p.add_argument("--only", default="", help="例: 13-11,13-12（場コード-レース番号）")
+    p.add_argument("--full", action="store_true", help="展示後に記事をまるごと送る")
     a = p.parse_args()
     hd = a.date or now().strftime("%Y%m%d")
     try:
         if a.command == "morning":
             cmd_morning(hd)
         elif a.command == "watch":
-            cmd_watch(hd, a.t_from, a.t_to)
+            cmd_watch(hd, a.t_from, a.t_to, a.only, a.full)
         elif a.command == "presale":
             cmd_presale(hd)
         elif a.command == "results":

@@ -8,6 +8,8 @@ on:
     inputs:
       t_from: { description: "締切がこの時刻以降（例 15:30）", default: "00:00" }
       t_to:   { description: "締切がこの時刻より前（例 18:30）", default: "24:00" }
+      only:   { description: "指定レースだけ（例 13-11,13-12）", default: "" }
+      full:   { description: "記事をまるごと送る（予約版を出していないとき）", type: boolean, default: false }
 permissions:
   contents: read
   actions: write
@@ -29,7 +31,7 @@ jobs:
             "47 8 * * *") echo "from=18:30" >> $GITHUB_OUTPUT; echo "to=24:00" >> $GITHUB_OUTPUT ;;
             *) echo "from=${{ inputs.t_from }}" >> $GITHUB_OUTPUT; echo "to=${{ inputs.t_to }}" >> $GITHUB_OUTPUT ;;
           esac
-      - run: python main.py watch --from "${{ steps.win.outputs.from }}" --to "${{ steps.win.outputs.to }}"
+      - run: python main.py watch --from "${{ steps.win.outputs.from }}" --to "${{ steps.win.outputs.to }}" ${{ inputs.only && format('--only {0}', inputs.only) || '' }} ${{ inputs.full && '--full' || '' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
