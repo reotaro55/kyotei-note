@@ -1,0 +1,40 @@
+name: 過去オッズの収集
+on:
+  workflow_dispatch:
+    inputs:
+      start: { description: "開始日 YYYY-MM-DD", required: true }
+      end: { description: "終了日 YYYY-MM-DD", required: true }
+permissions:
+  contents: write
+concurrency: { group: odds-data, cancel-in-progress: false }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: sudo apt-get update -q && sudo apt-get install -y -q lhasa
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: history_cache
+          key: history-${{ github.run_id }}
+          restore-keys: history-
+      - name: 集めたオッズを取り出す
+        run: |
+          git fetch origin odds-data && git worktree add odds_wt origin/odds-data || (git worktree add --detach odds_wt && cd odds_wt && git switch --orphan odds-data)
+          mkdir -p odds_wt/odds_data
+      - run: python collect_odds.py --start "${{ inputs.start }}" --end "${{ inputs.end }}" --out odds_wt/odds_data
+        timeout-minutes: 330
+        continue-on-error: true
+      - name: 保存（odds-data ブランチ）
+        if: always()
+        run: |
+          cd odds_wt
+          git config user.name "kyotei-bot"
+          git config user.email "kyotei-bot@users.noreply.github.com"
+          git add odds_data
+          git commit -qm "odds ${{ inputs.start }}..${{ inputs.end }}" || exit 0
+          git push -q origin HEAD:odds-data

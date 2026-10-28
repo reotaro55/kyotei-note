@@ -278,3 +278,36 @@ def parse_result(soup: BeautifulSoup) -> dict | None:
 
 def fetch_result(jcd: str, rno: int, hd: str) -> dict | None:
     return parse_result(_get("raceresult", rno=rno, jcd=jcd, hd=hd))
+
+
+# ------------------------------------------------------------------ 3連単オッズ
+def parse_odds3t(soup: BeautifulSoup) -> dict[str, float] | None:
+    """3連単オッズ（120通り）。中止なら None。欠場などで売られていない目は入らない。"""
+    if "該当レースは中止" in soup.get_text():
+        return None
+    tables = soup.select("div.table1")
+    if not tables:
+        return {}
+    odds, b2 = {}, None
+    for tr in tables[-1].select("table > tbody > tr"):
+        tds = tr.select("td")
+        if not tds:
+            continue
+        if "is-fs14" in (tds[0].get("class") or []):
+            b2 = _num(_clean(tds[0].get_text()), int)
+            pairs = zip(tds[1::3], tds[2::3])
+        else:
+            pairs = zip(tds[::2], tds[1::2])
+        if b2 is None:
+            continue
+        for i, (b3, o) in enumerate(pairs):
+            b1 = i + 1
+            v = _num(_clean(o.get_text()), float)
+            t3 = _num(_clean(b3.get_text()), int)
+            if v and t3:
+                odds[f"{b1}-{b2 - (b1 >= b2)}-{t3}"] = v
+    return odds
+
+
+def fetch_odds3t(jcd: str, rno: int, hd: str) -> dict[str, float] | None:
+    return parse_odds3t(_get("odds3t", rno=rno, jcd=jcd, hd=hd))
