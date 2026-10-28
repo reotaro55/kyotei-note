@@ -52,6 +52,7 @@ def _facts(kind, race, bets, before=None, tenji_ranks=None, post_notes=None):
             "枠": w, "選手": b["name"], "級別": b["class"],
             "全国勝率": b["win_rate"], "当地勝率": b["local_win_rate"],
             "平均ST": b["avg_st"], "モーター2連率": b["motor2"],
+            "今節得点率": round(b["form"], 2) if b.get("form") is not None and b.get("kon_n", 0) >= 2 else None,
         }
         if before:
             bb = before["boats"].get(w, {})
@@ -118,7 +119,8 @@ PROMPT = """あなたは競艇予想noteブランド「艇眼｜TEIGAN」のラ�
  "lines": ["無料部分の短い文を2〜3行。答えを伏せて続きが気になる書き方で"],
  "tenkai": ["有料部分の展開予想を2〜3行だけ。1行目=本線の展開、2行目=崩れるならこの形、3行目(任意)=根拠の数字"],
  "honmei": "本命の根拠を1行（20字以内）",
- "ana": "穴の根拠を1行（20字以内）"}
+ "ana": "穴の根拠を1行（20字以内）",
+ "kanpyo": ["各艇の寸評を1号艇から6号艇まで6つ。各40字以内。プロ目線で、その艇がどう動くか・何着までありそうか。データの範囲で（例: 地力はメンバー上位。先に回って押し切りまで）"]}
 
 データ:
 """
@@ -203,7 +205,26 @@ def _template(facts: dict) -> dict:
                    f"モーター2連率{hm['モーター2連率']:.0f}%、機力上位。"],
         "honmei": f"{hm['枠']}号艇の" + ("イン逃げ。" if hm['枠'] == 1 else "攻め切り。"),
         "ana": f"{an['枠']}号艇が展開を作る形。",
+        "kanpyo": [_kanpyo(r, facts) for r in facts["選手データ"]],
     }
+
+
+def _kanpyo(r: dict, facts: dict) -> str:
+    """ChatGPTが使えないときの寸評（データから機械的に作る）。"""
+    rates = sorted((x["全国勝率"] for x in facts["選手データ"]), reverse=True)
+    rank = rates.index(r["全国勝率"]) + 1
+    s = "地力はメンバー上位。" if rank <= 2 else "地力は中位。" if rank <= 4 else "地力は見劣る。"
+    if r["モーター2連率"] >= 40:
+        s += "機力も上位。"
+    if r.get("今節得点率") is not None and r["今節得点率"] >= 6.5:
+        s += "今節は好調。"
+    if r.get("展示タイム順位") == 1:
+        s += "展示タイム1位で気配良好。"
+    if r["枠"] == facts["本命の1着艇"]:
+        s += "頭まで。"
+    elif r["枠"] == facts["穴の1着艇"]:
+        s += "展開ひとつで頭も。"
+    return s
 
 
 def _data_table(facts: dict) -> str:
@@ -247,10 +268,13 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
     paid_part = "\n\n".join([
         "🔥 展開予想",
         _para(t["tenkai"]),
+        "📝 各艇寸評\n" + "\n".join(f"{'①②③④⑤⑥'[i]}{clean_ng(str(c)).strip()}"
+                                    for i, c in enumerate(list(t.get("kanpyo") or [])[:6])),
         "🎯 本命（3点）\n" + "\n".join(bets["本命"]),
         clean_ng(t["honmei"]),
         "💣 穴（3点）\n" + "\n".join(bets["穴"]),
         clean_ng(t["ana"]),
+        "💰 配分の目安：本命◎厚め（2）：穴○（1）",
         "📊 データ\n" + _data_table(facts),
         config.DISCLAIMER,
     ])
