@@ -89,9 +89,18 @@ def _courses(before: dict | None) -> dict[int, int]:
     return {}
 
 
+# 今節の得点率と勝負駆けの重み（バックテストで決める。0なら使わない）
+FORM_W = 0.0   # 得点率が平均(5.5)より1高いごとに足す点
+KAKE_W = 0.0   # 予選最終日でボーダー付近（勝負駆け）の選手に足す点
+
+
 def strength(b: dict, course: int, tenji_rank: int | None = None) -> float:
     """1着になる力のざっくりした点数。"""
     s = b["win_rate"] * 10 + (b.get("local_win_rate") or b["win_rate"]) * 3
+    if FORM_W and b.get("form") is not None and b.get("kon_n", 0) >= 2:
+        s += FORM_W * (b["form"] - 5.5)
+    if KAKE_W and b.get("kakeru"):
+        s += KAKE_W
     s += b["motor2"] * 0.3 + CLASS_BONUS.get(b["class"], 0)
     s += COURSE_BONUS.get(course, 0)
     if tenji_rank:

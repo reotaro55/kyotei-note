@@ -80,7 +80,21 @@ def _blocks(text: str, kind: str):
 
 
 # ------------------------------------------------------------------ 番組表
-B_RACE = re.compile(r"^[\s　]*([０-９0-9]+)[ＲR].*?締切予定([０-９0-9]{2})[：:]([０-９0-9]{2})")
+B_RACE = re.compile(r"^[\s　]*([０-９0-9]+)[ＲR]\s+(\S+).*?締切予定([０-９0-9]{2})[：:]([０-９0-9]{2})")
+B_DAY = re.compile(r"第[\s　]*([０-９0-9]+)日")
+POINTS = {1: 10, 2: 8, 3: 6, 4: 4, 5: 2, 6: 1}
+
+
+def kon_form(field: str) -> tuple[float | None, int]:
+    """今節成績の欄（着順の並び）→ (得点率, 出走数)。F・L・欠場などは0点で1走。"""
+    pts = n = 0
+    for c in _z2h(field):
+        if c == " ":
+            continue
+        n += 1
+        if c.isdigit():
+            pts += POINTS.get(int(c), 0)
+    return (pts / n if n else None), n
 B_BOAT = re.compile(
     r"^([1-6]) (\d{4})(.{4})(\d{2})(.{2})(\d{2})([AB][12]) *"
     r"(\d+\.\d+) +(\d+\.\d+) +(\d+\.\d+) +(\d+\.\d+) +(\d+) +(\d+\.\d+) +(\d+) +(\d+\.\d+)"
@@ -91,18 +105,24 @@ def parse_b(text: str) -> list[dict]:
     """番組表 → レースのリスト。boats は scraper.parse_racelist と同じ形。"""
     races = []
     for jcd, lines in _blocks(text, "B"):
-        cur = None
+        cur, day = None, None
         for line in lines:
+            if day is None:
+                md = B_DAY.search(line)
+                if md:
+                    day = int(_z2h(md.group(1)))
             m = B_RACE.match(line)
             if m:
                 rno = int(_z2h(m.group(1)))
-                cur = {"jcd": jcd, "venue": VENUES.get(jcd, jcd), "rno": rno,
-                       "deadline": f"{_z2h(m.group(2))}:{_z2h(m.group(3))}", "boats": {}}
+                cur = {"jcd": jcd, "venue": VENUES.get(jcd, jcd), "rno": rno, "day": day,
+                       "race_name": m.group(2).replace("　", ""),
+                       "deadline": f"{_z2h(m.group(3))}:{_z2h(m.group(4))}", "boats": {}}
                 races.append(cur)
                 continue
             m = B_BOAT.match(line)
             if m and cur is not None:
                 w = int(m.group(1))
+                form, kon_n = kon_form(line[m.end() + 1: m.end() + 13])
                 cur["boats"][w] = {
                     "waku": w, "racer_id": m.group(2), "name": m.group(3).replace("　", ""),
                     "class": m.group(7), "F": 0, "L": 0, "avg_st": None,
@@ -110,6 +130,7 @@ def parse_b(text: str) -> list[dict]:
                     "local_win_rate": float(m.group(10)),
                     "motor_no": int(m.group(12)), "motor2": float(m.group(13)),
                     "boat2": float(m.group(15)),
+                    "form": form, "kon_n": kon_n,
                 }
     return [r for r in races if len(r["boats"]) == 6]
 

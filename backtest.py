@@ -123,6 +123,59 @@ class VStat:
         return f"  {name}: 的中{self.hit / self.n * 100:.1f}% 回収{self.ret / (self.n * 600) * 100:.1f}%"
 
 
+STRENGTH_VARIANTS = [(0, 0), (1, 0), (2, 0), (4, 0), (8, 0), (0, 5), (0, -5), (2, 5), (4, 5)]
+
+
+def mark_kakeru(b_races: list[dict], series_len: dict):
+    """予選最終日に、得点率がボーダー(18位)付近の選手へ kakeru=True を付ける。"""
+    by_venue = defaultdict(list)
+    for r in b_races:
+        by_venue[r["jcd"]].append(r)
+    for jcd, races in by_venue.items():
+        day, n = races[0].get("day"), series_len.get(jcd)
+        if not day or not n or n < 4 or day != n - 2:
+            continue
+        forms = {}
+        for r in races:
+            for b in r["boats"].values():
+                if b.get("form") is not None:
+                    forms[b["racer_id"]] = b["form"]
+        order = sorted(forms, key=lambda k: forms[k], reverse=True)
+        band = set(order[12:24])  # 13〜24位
+        for r in races:
+            if "予選" not in r.get("race_name", ""):
+                continue
+            for b in r["boats"].values():
+                b["kakeru"] = b["racer_id"] in band
+
+
+def strength_report(samples: list) -> list[str]:
+    out = ["", "■強さ計算の比較（得点率の重み, 勝負駆けの重み）"]
+    kakeru_races = sum(1 for _, boats, _, _ in samples if any(b.get("kakeru") for b in boats.values()))
+    out.append(f"  ※勝負駆けの選手がいたレース: {kakeru_races:,}")
+    base_f, base_k = scoring.FORM_W, scoring.KAKE_W
+    for fw, kw in STRENGTH_VARIANTS:
+        scoring.FORM_W, scoring.KAKE_W = fw, kw
+        row = []
+        for kind in ("pre", "post"):
+            n = head = hit = ret = 0
+            for k, boats, before, res in samples:
+                if k != kind:
+                    continue
+                bets = scoring.make_bets(boats, before)
+                n += 1
+                if int(bets["本命"][0][0]) == res["order"].get(1):
+                    head += 1
+                got = [p for c, p, _ in res["trifecta"] if c in scoring.flat(bets)]
+                if got:
+                    hit += 1
+                    ret += sum(got)
+            row.append(f"{'事前' if kind == 'pre' else '展示後'} 頭{head / n * 100:.1f}% 的中{hit / n * 100:.1f}% 回収{ret / (n * 600) * 100:.1f}%" if n else "-")
+        out.append(f"  ({fw:>2},{kw:>2}) " + " ｜ ".join(row))
+    scoring.FORM_W, scoring.KAKE_W = base_f, base_k
+    return out
+
+
 def bucket(score):
     return "75点以上" if score >= 75 else "65〜75点" if score >= 65 else "55〜65点" if score >= 55 else "55点未満"
 
@@ -146,14 +199,33 @@ def main():
     month = defaultdict(lambda: [0, 0])  # 月 → [投資, 払戻]（事前＋展示後）
     days = skipped_post = 0
 
+    # 1周目: 番組表を全部読み込み、節の長さ（何日開催か）を求める
+    loaded = {}
+    d = start
+    while d <= end + timedelta(days=7):
+        b_txt = history.fetch_text("B", d, a.cache, a.sleep)
+        loaded[d] = history.parse_b(b_txt) if b_txt else []
+        d += timedelta(days=1)
+    day_of = {(d, r["jcd"]): r.get("day") for d, rs in loaded.items() for r in rs}
+    series_len = {}  # (日付, 場) → その節の日数
+    for (d, jcd), day in day_of.items():
+        if not day:
+            continue
+        n, x = day, d
+        while day_of.get((x + timedelta(days=1), jcd)) == n + 1:
+            n += 1
+            x += timedelta(days=1)
+        series_len[(d, jcd)] = n
+    samples = []
+
     d = start
     while d <= end:
-        b_txt = history.fetch_text("B", d, a.cache, a.sleep)
-        k_txt = history.fetch_text("K", d, a.cache, a.sleep) if b_txt else None
-        if b_txt and k_txt:
+        b_races = loaded.get(d) or []
+        k_txt = history.fetch_text("K", d, a.cache, a.sleep) if b_races else None
+        if b_races and k_txt:
             days += 1
             results = history.parse_k(k_txt)
-            b_races = history.parse_b(b_txt)
+            mark_kakeru(b_races, {j: n for (x, j), n in series_len.items() if x == d})
             pre, post = daily_plan(b_races)
             for r in b_races:  # 比較用: 厳選なしで全レースを買った場合
                 res = results.get((r["jcd"], r["rno"]))
@@ -165,6 +237,7 @@ def main():
                 res = results.get((r["jcd"], r["rno"]))
                 if not res or res["cancelled"] or not res["trifecta"] or len(res["tenji"]) < 6:
                     continue
+                samples.append(("pre", r["boats"], None, res))
                 bets = scoring.pre_bets(r["boats"])
                 w = scoring.ranking(r["boats"])
                 for name, f in VARIANTS.items():
@@ -183,6 +256,7 @@ def main():
                 if skip or score < config.POST_MIN_SCORE:
                     skipped_post += 1
                     continue
+                samples.append(("post", r["boats"], before, res))
                 bets = scoring.post_bets(r["boats"], before)
                 w = scoring.ranking(r["boats"], before)
                 for name, f in VARIANTS.items():
@@ -206,6 +280,7 @@ def main():
     for kind, label in (("pre", "事前"), ("post", "展示後"), ("all", "厳選なし・全レース・出走表のみ")):
         out += ["", f"■買い目パターン比較（{label}・6点）"]
         out += [var[kind][name].line(name) for name in VARIANTS]
+    out += strength_report(samples)
     out += ["", "■月別の回収率（事前＋展示後）"]
     for m in sorted(month):
         inv, ret = month[m]
