@@ -1,5 +1,7 @@
 name: 過去オッズの収集
 on:
+  schedule:
+    - cron: "23 */6 * * *"   # 6時間ごとに、まだ集めていない日を新しい順に集める
   workflow_dispatch:
     inputs:
       start: { description: "開始日 YYYY-MM-DD", required: true }
@@ -26,7 +28,12 @@ jobs:
         run: |
           git fetch origin odds-data && git worktree add odds_wt origin/odds-data || (git worktree add --detach odds_wt && cd odds_wt && git switch --orphan odds-data)
           mkdir -p odds_wt/odds_data
-      - run: python collect_odds.py --start "${{ inputs.start }}" --end "${{ inputs.end }}" --out odds_wt/odds_data
+      - run: |
+          if [ -n "${{ inputs.start }}" ]; then
+            python collect_odds.py --start "${{ inputs.start }}" --end "${{ inputs.end }}" --out odds_wt/odds_data
+          else
+            python collect_odds.py --start 2025-10-01 --end "$(TZ=Asia/Tokyo date -d yesterday +%F)" --out odds_wt/odds_data --newest-first
+          fi
         timeout-minutes: 330
         continue-on-error: true
       - name: 保存（odds-data ブランチ）
@@ -36,5 +43,5 @@ jobs:
           git config user.name "kyotei-bot"
           git config user.email "kyotei-bot@users.noreply.github.com"
           git add odds_data
-          git commit -qm "odds ${{ inputs.start }}..${{ inputs.end }}" || exit 0
+          git commit -qm "odds update" || exit 0
           git push -q origin HEAD:odds-data

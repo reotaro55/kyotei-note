@@ -23,13 +23,17 @@ def main():
     ap.add_argument("--end", required=True)
     ap.add_argument("--out", default="odds_data")
     ap.add_argument("--cache", default="history_cache")
+    ap.add_argument("--newest-first", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     config.REQUEST_SLEEP_SEC = 1.0
 
-    d, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
+    start, end = date.fromisoformat(a.start), date.fromisoformat(a.end)
+    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    if a.newest_first:
+        days.reverse()
     total = 0
-    while d <= end:
+    for d in days:
         path = os.path.join(a.out, f"{d:%Y%m%d}.json.gz")
         if not os.path.exists(path):
             b_txt = history.fetch_text("B", d, a.cache, 1.0)
@@ -50,7 +54,6 @@ def main():
                     json.dump(day, f, separators=(",", ":"))
             total += len(day)
             print(f"{d}: {len(day)}レース", flush=True)
-        d += timedelta(days=1)
     print(f"完了: {total}レース分", flush=True)
 
 
