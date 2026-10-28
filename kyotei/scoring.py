@@ -169,9 +169,19 @@ def tenji_ranks(before: dict) -> dict[int, int]:
     return _tenji_ranks(before)
 
 
+# 事前予想だけ、相手選びに今節の得点率を使う（2年分のバックテストで相手的中率が
+# 両年とも少し上がった重み。展示後は効果が安定しなかったので使わない）
+PRE_P_FORM_W = 2.0
+
+
 # 便利関数
 def pre_bets(boats):
-    return make_bets(boats)
+    global P_FORM_W
+    saved, P_FORM_W = P_FORM_W, PRE_P_FORM_W
+    try:
+        return make_bets(boats)
+    finally:
+        P_FORM_W = saved
 
 
 def post_bets(boats, before):

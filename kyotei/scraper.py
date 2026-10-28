@@ -6,6 +6,7 @@ HTMLの読み取り方は pyjpboatrace（MIT License, (c) 2020 hmasdev）の
 """
 import re
 import time
+import unicodedata
 
 import requests
 from bs4 import BeautifulSoup
@@ -131,6 +132,26 @@ def _split(td, sep=","):
     return [t for t in _clean(td.get_text(sep)).split(sep) if t != ""]
 
 
+POINTS = {1: 10, 2: 8, 3: 6, 4: 4, 5: 2, 6: 1}
+
+
+def _kon_form(trs) -> tuple[float | None, int]:
+    """出走表の「今節成績」（4行目の着順）から得点率を出す。読めなければ (None, 0)。"""
+    try:
+        cells = trs[3].select("td")[:14]
+    except IndexError:
+        return None, 0
+    pts = n = 0
+    for td in cells:
+        t = unicodedata.normalize("NFKC", _clean(td.get_text()))
+        if not t:
+            continue
+        n += 1
+        if t.isdigit():
+            pts += POINTS.get(int(t), 0)
+    return (pts / n if n else None), n
+
+
 def parse_racelist(soup: BeautifulSoup) -> dict:
     boats = {}
     for tbody in soup.select("div.table1.is-tableFixed__3rdadd > table > tbody"):
@@ -153,6 +174,7 @@ def parse_racelist(soup: BeautifulSoup) -> dict:
             continue
         if not waku:
             continue
+        form, kon_n = _kon_form(trs)
         boats[waku] = {
             "waku": waku,
             "racer_id": racer_id,
@@ -167,6 +189,7 @@ def parse_racelist(soup: BeautifulSoup) -> dict:
             "motor_no": _num(motor[0] if motor else None, int),
             "motor2": _num(motor[1] if len(motor) > 1 else None, float, 0.0),
             "boat2": _num(boat[1] if len(boat) > 1 else None, float, 0.0),
+            "form": form, "kon_n": kon_n,
         }
     h3 = soup.select_one("h3")
     return {"title": _clean(h3.get_text()) if h3 else "", "boats": boats}

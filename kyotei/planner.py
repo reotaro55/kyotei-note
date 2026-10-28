@@ -44,6 +44,10 @@ def build_plan(hd: str, log=print) -> dict:
             }
             (post if post_race else pre).append(item)
     log(f"候補: 事前{len(pre)}レース / 展示後{len(post)}レース")
+    boats = [b for r in pre + post for b in r["boats"].values()]
+    if boats:
+        ok = sum(1 for b in boats if b.get("form") is not None)
+        log(f"今節成績を読めた選手: {ok}/{len(boats)}")
 
     pre.sort(key=lambda x: x["score"], reverse=True)
     chosen = [x for x in pre if x["score"] >= config.PRE_MIN_SCORE][: config.PRE_MAX]
