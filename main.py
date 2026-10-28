@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from kyotei import config, notify, planner, scoring, scraper, writer
+from kyotei import config, ledger, notify, planner, scoring, scraper, writer
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -42,6 +42,7 @@ def cmd_morning(hd: str):
         bets = scoring.pre_bets(race["boats"])
         article = writer.build_article("pre", race, bets)
         notify.send_article(article, race["deadline"])
+        ledger.record(hd, "morning", race, "pre", bets)
         sent_races.append(race)
         sent += 1
         log(f"事前予想 送信: {race['venue']}{race['rno']}R（{race['score']}点）")
@@ -93,6 +94,7 @@ def cmd_watch(hd: str, t_from: str, t_to: str):
             article = writer.build_article(
                 "post", race, bets, before, scoring.tenji_ranks(before), notes)
             notify.send_article(article, race["deadline"])
+            ledger.record(hd, "watch" + t_from.replace(":", ""), race, "post", bets)
             log(f"展示後予想 送信: {name}（{score}点）")
         if pending:
             time.sleep(config.WATCH_INTERVAL_SEC)
@@ -101,39 +103,26 @@ def cmd_watch(hd: str, t_from: str, t_to: str):
 
 # ------------------------------------------------------------------ 結果
 def cmd_results(hd: str):
-    plan = planner.build_plan(hd, log)
-    summary = {}
+    entries = ledger.load(hd)
+    if not entries:  # 記録が無いとき（手動実行など）は、同じ計算をやり直す
+        log("送った買い目の記録が無いので、計算し直して集計します")
+        entries = _recompute_entries(hd)
+    summary = {"pre": [0, 0, 0, 0], "post": [0, 0, 0, 0]}  # レース数, 的中, 投資, 払戻
     hits = []
-    for kind in ("pre", "post"):
-        n = bet = ret = hit = 0
-        for race in plan[kind]:
-            if kind == "pre":
-                bets = scoring.pre_bets(race["boats"])
-            else:
-                try:
-                    before = scraper.fetch_beforeinfo(race["jcd"], race["rno"], hd)
-                except scraper.ScrapeError:
-                    continue
-                if not before["ready"]:
-                    continue
-                score, _, skip = scoring.post_score(race["boats"], before)
-                if skip or score < config.POST_MIN_SCORE:
-                    continue
-                bets = scoring.post_bets(race["boats"], before)
-            try:
-                res = scraper.fetch_result(race["jcd"], race["rno"], hd)
-            except scraper.ScrapeError:
-                continue
-            if not res or res["cancelled"]:
-                continue
-            n += 1
-            bet += len(scoring.flat(bets)) * 100
-            if scoring.is_hit(bets, res["trifecta"]):
-                hit += 1
-                ret += res["payout"]
-                label = "事前" if kind == "pre" else "展示後"
-                hits.append(f"🎯 {label} {race['venue']}{race['rno']}R {res['trifecta']} {res['payout']:,}円")
-        summary[kind] = (n, hit, bet, ret)
+    for e in entries:
+        try:
+            res = scraper.fetch_result(e["jcd"], e["rno"], hd)
+        except scraper.ScrapeError:
+            continue
+        if not res or res["cancelled"]:
+            continue
+        s = summary[e["kind"]]
+        s[0] += 1
+        s[2] += len(scoring.flat(e["bets"])) * 100
+        if scoring.is_hit(e["bets"], res["trifecta"]):
+            s[1] += 1
+            s[3] += res["payout"]
+            hits.append((e, res))
 
     lines = [f"📊 {hd[4:6]}/{hd[6:]} の成績（各点100円で計算）"]
     for kind, label in (("pre", "事前予想"), ("post", "展示後予想")):
@@ -141,9 +130,40 @@ def cmd_results(hd: str):
         rate = f"{hit / n * 100:.0f}%" if n else "-"
         roi = f"{ret / bet * 100:.0f}%" if bet else "-"
         lines.append(f"{label}: {hit}/{n}的中（{rate}）回収率 {roi}")
-    lines += hits
+    for e, res in hits:
+        label = "事前" if e["kind"] == "pre" else "展示後"
+        lines.append(f"🎯 {label} {e['venue']}{e['rno']}R {res['trifecta']} {res['payout']:,}円")
     notify.send("\n".join(lines))
-    log("成績を送信")
+    for e, res in hits:
+        note, x = writer.make_hit_report(e, res)
+        notify.send(f"━━━━━━━━━━\n🎯 的中報告｜{e['venue']}{e['rno']}R\n↓ note用 → X用の順に届きます")
+        notify.send(note)
+        notify.send("🐦 ↓X投稿用（URLを差し替えて投稿）")
+        notify.send(x)
+    log(f"成績を送信（的中{len(hits)}件）")
+
+
+def _recompute_entries(hd: str) -> list[dict]:
+    plan = planner.build_plan(hd, log)
+    out = []
+    for race in plan["pre"]:
+        out.append(dict(kind="pre", jcd=race["jcd"], rno=race["rno"], venue=race["venue"],
+                        grade=race.get("grade", ""), deadline=race["deadline"], hd=hd,
+                        bets=scoring.pre_bets(race["boats"])))
+    for race in plan["post"]:
+        try:
+            before = scraper.fetch_beforeinfo(race["jcd"], race["rno"], hd)
+        except scraper.ScrapeError:
+            continue
+        if not before["ready"]:
+            continue
+        score, _, skip = scoring.post_score(race["boats"], before)
+        if skip or score < config.POST_MIN_SCORE:
+            continue
+        out.append(dict(kind="post", jcd=race["jcd"], rno=race["rno"], venue=race["venue"],
+                        grade=race.get("grade", ""), deadline=race["deadline"], hd=hd,
+                        bets=scoring.post_bets(race["boats"], before)))
+    return out
 
 
 def cmd_test():

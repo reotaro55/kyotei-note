@@ -341,3 +341,34 @@ def make_x_roundup(hd: str, races: list[dict]) -> str:
     if rest:
         body.append(f"ほか{rest}R")
     return "\n".join(head + body + tail)
+
+
+def make_hit_report(e: dict, res: dict) -> tuple[str, str]:
+    """的中報告（note用の無料記事本文, X用ポスト）。"""
+    hd = e["hd"]
+    date = f"{int(hd[4:6])}/{int(hd[6:8])}"
+    race = f"{e.get('grade', '')}{e['venue']}{e['rno']}R"
+    label = "事前予想" if e["kind"] == "pre" else "展示後予想"
+    price = config.PRICE_PRE if e["kind"] == "pre" else config.PRICE_POST
+    part = "本命" if res["trifecta"] in e["bets"]["本命"] else "穴"
+    pay = res["payout"]
+    roi = pay / (len(e["bets"]["本命"] + e["bets"]["穴"]) * 100) * 100
+    note = "\n\n".join([
+        f"🎯【艇眼】的中報告｜{date} {race}",
+        f"🚤 {date} {race}（{label}・{price}円）",
+        f"✅ 3連単 {res['trifecta']} 的中！",
+        f"💰 払戻 {pay:,}円（100円あたり）",
+        f"🎯 {part}3点で仕留めた一戦。" + (f"6点買いで回収率{roi:.0f}%。" if roi >= 100 else ""),
+        "👁️ 強い艇を探すな。勝つ展開を見抜け。",
+        "🔥 次の予想もnoteで公開中。フォローしてお待ちください。",
+        config.DISCLAIMER,
+    ])
+    x = "\n".join([
+        f"🎯的中🎯【艇眼】{date} {race}",
+        f"3連単 {res['trifecta']}｜{pay:,}円",
+        f"{part}3点で仕留めた！（{label}）",
+        "👇次の予想はnoteで",
+        "（ここにnoteのURL）",
+        "#競艇予想 #ボートレース #的中",
+    ])
+    return note, x

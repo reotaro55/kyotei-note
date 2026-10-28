@@ -12,6 +12,21 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements.txt
+      - name: 今日のキャッシュキー
+        id: d
+        run: echo "d=$(TZ=Asia/Tokyo date +%Y%m%d)" >> $GITHUB_OUTPUT
+      - uses: actions/cache/restore@v4
+        with: { path: bets, key: "bets-${{ steps.d.outputs.d }}-morning" }
+      - uses: actions/cache/restore@v4
+        with: { path: bets_w1, key: "bets-${{ steps.d.outputs.d }}-watch0000" }
+      - uses: actions/cache/restore@v4
+        with: { path: bets_w2, key: "bets-${{ steps.d.outputs.d }}-watch1530" }
+      - uses: actions/cache/restore@v4
+        with: { path: bets_w3, key: "bets-${{ steps.d.outputs.d }}-watch1830" }
+      - run: |
+          mkdir -p bets
+          for d in bets_w1 bets_w2 bets_w3; do [ -d "$d" ] && cp -n $d/*.json bets/ 2>/dev/null || true; done
+          ls bets || true
       - run: python main.py results
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
