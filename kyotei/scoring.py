@@ -120,23 +120,40 @@ def ranking(boats: dict, before: dict | None = None) -> list[int]:
     return [b["waku"] for b in order]
 
 
+# 2・3着の相手選びに使う重み（バックテストで決める。0なら頭と同じ強さ順）
+P_FORM_W = 0.0   # 今節の得点率
+P_KAKE_W = 0.0   # 勝負駆け
+
+
+def partner_score(b: dict, course: int, tenji_rank: int | None = None) -> float:
+    """2・3着に残る力。頭の強さに、今節の調子と勝負駆けを足す。"""
+    s = strength(b, course, tenji_rank)
+    if P_FORM_W and b.get("form") is not None and b.get("kon_n", 0) >= 2:
+        s += P_FORM_W * (b["form"] - 5.5)
+    if P_KAKE_W and b.get("kakeru"):
+        s += P_KAKE_W
+    return s
+
+
 def make_bets(boats: dict, before: dict | None = None) -> dict[str, list[str]]:
     """本命3点＋穴3点の3連単。
 
-    本命: 一番強い艇が1着
-    穴　: 二番手の艇が1着（本命艇を2・3着に残す形）
+    頭（1着）は strength の順で、本命=一番手、穴=二番手。
+    2・3着の相手は partner_score の順で選ぶ。
     """
     ranks = _tenji_ranks(before) if before else {}
     courses = _courses(before)
-    order = sorted(
-        boats.values(),
-        key=lambda b: strength(b, courses.get(b["waku"], b["waku"]), ranks.get(b["waku"])),
-        reverse=True,
-    )
-    w = [b["waku"] for b in order]
-    a, h, x, y = w[0], w[1], w[2], w[3]
-    honmei = [f"{a}-{h}-{x}", f"{a}-{x}-{h}", f"{a}-{h}-{y}"]
-    ana = [f"{h}-{a}-{x}", f"{h}-{x}-{a}", f"{h}-{a}-{y}"]
+    c = lambda w: courses.get(w, w)
+    w = ranking(boats, before)
+    a, h = w[0], w[1]
+    pr = sorted((x for x in boats if x != a),
+                key=lambda x: partner_score(boats[x], c(x), ranks.get(x)), reverse=True)
+    p1, p2, p3 = pr[0], pr[1], pr[2]
+    qr = [x for x in sorted(boats, key=lambda x: partner_score(boats[x], c(x), ranks.get(x)), reverse=True)
+          if x not in (a, h)]
+    q1, q2 = qr[0], qr[1]
+    honmei = [f"{a}-{p1}-{p2}", f"{a}-{p2}-{p1}", f"{a}-{p1}-{p3}"]
+    ana = [f"{h}-{a}-{q1}", f"{h}-{q1}-{a}", f"{h}-{a}-{q2}"]
     return {"本命": honmei, "穴": ana}
 
 

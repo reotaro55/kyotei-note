@@ -123,7 +123,7 @@ class VStat:
         return f"  {name}: 的中{self.hit / self.n * 100:.1f}% 回収{self.ret / (self.n * 600) * 100:.1f}%"
 
 
-STRENGTH_VARIANTS = [(0, 0), (1, 0), (2, 0), (4, 0), (8, 0), (0, 5), (0, -5), (2, 5), (4, 5)]
+PARTNER_VARIANTS = [(0, 0), (2, 0), (4, 0), (8, 0), (0, 5), (0, 10), (2, 5), (4, 5), (4, 10), (8, 10)]
 
 
 def mark_kakeru(b_races: list[dict], series_len: dict):
@@ -150,15 +150,16 @@ def mark_kakeru(b_races: list[dict], series_len: dict):
 
 
 def strength_report(samples: list) -> list[str]:
-    out = ["", "■強さ計算の比較（得点率の重み, 勝負駆けの重み）"]
+    out = ["", "■2・3着の相手選びの比較（得点率の重み, 勝負駆けの重み）",
+           "  ※「相手的中」= 本命の頭が1着だったとき、本命3点が当たった割合"]
     kakeru_races = sum(1 for _, boats, _, _ in samples if any(b.get("kakeru") for b in boats.values()))
     out.append(f"  ※勝負駆けの選手がいたレース: {kakeru_races:,}")
-    base_f, base_k = scoring.FORM_W, scoring.KAKE_W
-    for fw, kw in STRENGTH_VARIANTS:
-        scoring.FORM_W, scoring.KAKE_W = fw, kw
+    base = (scoring.P_FORM_W, scoring.P_KAKE_W)
+    for fw, kw in PARTNER_VARIANTS:
+        scoring.P_FORM_W, scoring.P_KAKE_W = fw, kw
         row = []
         for kind in ("pre", "post"):
-            n = head = hit = ret = 0
+            n = head = hm = hit = ret = 0
             for k, boats, before, res in samples:
                 if k != kind:
                     continue
@@ -166,13 +167,15 @@ def strength_report(samples: list) -> list[str]:
                 n += 1
                 if int(bets["本命"][0][0]) == res["order"].get(1):
                     head += 1
+                    if any(c in bets["本命"] for c, _, _ in res["trifecta"]):
+                        hm += 1
                 got = [p for c, p, _ in res["trifecta"] if c in scoring.flat(bets)]
                 if got:
                     hit += 1
                     ret += sum(got)
-            row.append(f"{'事前' if kind == 'pre' else '展示後'} 頭{head / n * 100:.1f}% 的中{hit / n * 100:.1f}% 回収{ret / (n * 600) * 100:.1f}%" if n else "-")
+            row.append(f"{'事前' if kind == 'pre' else '展示後'} 相手的中{hm / head * 100:.1f}% 的中{hit / n * 100:.1f}% 回収{ret / (n * 600) * 100:.1f}%" if n and head else "-")
         out.append(f"  ({fw:>2},{kw:>2}) " + " ｜ ".join(row))
-    scoring.FORM_W, scoring.KAKE_W = base_f, base_k
+    scoring.P_FORM_W, scoring.P_KAKE_W = base
     return out
 
 
