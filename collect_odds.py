@@ -49,9 +49,10 @@ def main():
                     continue
                 if o:
                     day[f"{r['jcd']}-{r['rno']}"] = o
-            if day:
-                with gzip.open(path, "wt") as f:
+            if b_txt:  # 開催がない日も空ファイルを置いて、次回は飛ばす
+                with gzip.open(path + ".tmp", "wt") as f:
                     json.dump(day, f, separators=(",", ":"))
+                os.replace(path + ".tmp", path)
             total += len(day)
             print(f"{d}: {len(day)}レース", flush=True)
     print(f"完了: {total}レース分", flush=True)
