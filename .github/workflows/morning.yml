@@ -20,6 +20,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_FORUM_WEBHOOK_URL: ${{ secrets.DISCORD_FORUM_WEBHOOK_URL }}
       - name: 送った買い目をキャッシュに保存（夜の的中判定用・外部からは見えない）
         if: always()
         run: echo "key=bets-$(TZ=Asia/Tokyo date +%Y%m%d)-morning" >> $GITHUB_OUTPUT

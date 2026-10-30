@@ -13,16 +13,30 @@ import requests
 from . import config
 
 
+# 送り先。send_article の間だけフォーラムの投稿（スレッド）に切り替える
+_target = {"url": None, "thread_id": None, "thread_name": None}
+
+
 def _post(content: str):
-    if not config.DISCORD_WEBHOOK_URL:
+    url = _target["url"] or config.DISCORD_WEBHOOK_URL
+    if not url:
         print("（DISCORD_WEBHOOK_URL 未設定のため送信をスキップ）")
         return
+    payload = {"content": content}
+    params = {}
+    if _target["thread_id"]:
+        params["thread_id"] = _target["thread_id"]
+    elif _target["thread_name"]:  # フォーラムに新しい投稿を作る（最初の1通）
+        payload["thread_name"] = _target["thread_name"]
+        params["wait"] = "true"
     for _ in range(5):
-        r = requests.post(config.DISCORD_WEBHOOK_URL, json={"content": content}, timeout=20)
+        r = requests.post(url, params=params, json=payload, timeout=20)
         if r.status_code == 429:
             time.sleep(float(r.json().get("retry_after", 2)) + 0.5)
             continue
         r.raise_for_status()
+        if _target["thread_name"] and not _target["thread_id"]:
+            _target["thread_id"] = r.json()["channel_id"]
         time.sleep(0.6)
         return
     raise RuntimeError("Discordへの送信に失敗しました")
@@ -46,6 +60,26 @@ def _label(text: str):
 
 
 def send_article(article: dict, deadline: str):
+    """フォーラム用ウェブフックがあれば、記事ごとに別の投稿へまとめて送る。
+    メインのチャンネルには「届いた」という1行だけ流す。"""
+    if not config.DISCORD_FORUM_WEBHOOK_URL:
+        _send_article_body(article, deadline)
+        return
+    name = f"{deadline}締切｜{article['title']}".replace("\n", " ")[:95]
+    _target.update(url=config.DISCORD_FORUM_WEBHOOK_URL, thread_id=None, thread_name=name)
+    try:
+        _send_article_body(article, deadline)
+    except Exception as e:  # フォーラムに送れなければ、いつものチャンネルに送る
+        print(f"フォーラム送信失敗のため通常送信に切り替え: {e}")
+        _target.update(url=None, thread_id=None, thread_name=None)
+        _send_article_body(article, deadline)
+        return
+    finally:
+        _target.update(url=None, thread_id=None, thread_name=None)
+    send(f"📝 {name}（{article['price']}円）→ フォーラムに届きました")
+
+
+def _send_article_body(article: dict, deadline: str):
     send(f"━━━━━━━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}")
     _label("📌 タイトル")
     send(article["title"])

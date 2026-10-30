@@ -33,6 +33,8 @@ REQUEST_SLEEP_SEC = 1.0   # 公式サイトへの負荷を抑えるための待�
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "") or "gpt-6-luna"
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+# フォーラムチャンネルのウェブフック。設定すると記事を1本ずつ別の投稿（スレッド）に分けて送る
+DISCORD_FORUM_WEBHOOK_URL = os.environ.get("DISCORD_FORUM_WEBHOOK_URL", "")
 
 # ---- 記事末尾に必ず付ける注意書き ----
 DISCLAIMER = (
