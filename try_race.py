@@ -29,7 +29,10 @@ def main():
     if bi["ready"]:
         out["現行_展示後"] = {"スコア": scoring.post_score(rl["boats"], bi), "買い目": scoring.post_bets(rl["boats"], bi)}
         out["ルール版_展示後"] = {"強い順": rules.ranking(race, bi), "買い目": rules.make_bets(race, bi)}
-    print("RESULT_JSON " + json.dumps(out, ensure_ascii=False, default=str))
+    text = json.dumps(out, ensure_ascii=False, default=str)
+    print("RESULT_JSON " + text)
+    # ログが読めない環境でも見えるように、注釈としても残す
+    print("::notice title=RESULT_JSON::" + text.replace("%", "%25").replace("\n", "%0A"))
 
 
 if __name__ == "__main__":
