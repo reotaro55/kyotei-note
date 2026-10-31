@@ -22,8 +22,9 @@ def now():
     return datetime.now(JST)
 
 
-def judge(bets: dict, res: dict) -> int:
-    return res["payout"] if res["trifecta"] in scoring.flat(bets) else 0
+def judge(bets, res: dict) -> int:
+    flat = bets if isinstance(bets, list) else scoring.flat(bets)
+    return res["payout"] if res["trifecta"] in flat else 0
 
 
 def save(path: str, state: dict, push_dir: str | None):
@@ -35,18 +36,24 @@ def save(path: str, state: dict, push_dir: str | None):
                        shell=True)
 
 
+KINDS = ("pre_cur", "pre_rule", "post_cur", "post_rule", "pre_big", "post_big")
+
+
 def summary(state: dict) -> dict:
     s = {}
-    for kind in ("pre_cur", "pre_rule", "post_cur", "post_rule"):
+    for kind in KINDS:
         n = hit = ret = 0
         for r in state["races"].values():
             if r.get("result") and not r["result"].get("cancelled") and kind in r:
                 n += 1
+                if "payout" not in r[kind]:
+                    continue
                 p = r[kind]["payout"]
                 hit += p > 0
                 ret += p
-        s[kind] = {"レース": n, "的中": hit, "投資": n * 600, "払戻": ret,
-                   "回収率": f"{ret / (n * 600) * 100:.1f}%" if n else "-"}
+        pts = 3 if kind.endswith("_big") else 6
+        s[kind] = {"レース": n, "的中": hit, "投資": n * pts * 100, "払戻": ret,
+                   "回収率": f"{ret / (n * pts * 100) * 100:.1f}%" if n else "-"}
     return s
 
 
@@ -68,6 +75,9 @@ def main():
     for ri in index:
         r = state["races"].setdefault(str(ri["rno"]), {"deadline": ri["deadline"]})
         if "pre_cur" in r:
+            if "pre_big" not in r and not r.get("result"):
+                rl = scraper.fetch_racelist(a.jcd, ri["rno"], a.hd)
+                r["pre_big"] = {"bets": rules.big_bets(dict(rl, jcd=a.jcd, rno=ri["rno"]))}
             continue
         rl = scraper.fetch_racelist(a.jcd, ri["rno"], a.hd)
         race = dict(rl, jcd=a.jcd, rno=ri["rno"])
@@ -75,6 +85,7 @@ def main():
         r["danger"] = rules.danger(race)
         r["pre_cur"] = {"bets": scoring.pre_bets(rl["boats"])}
         r["pre_rule"] = {"bets": rules.make_bets(race, None, scoring.PRE_P_FORM_W)}
+        r["pre_big"] = {"bets": rules.big_bets(race)}
     save(path, state, push)
 
     while time.time() < t_end:
@@ -100,6 +111,7 @@ def main():
                     r["post_cur"] = {"bets": scoring.post_bets(rl["boats"], bi), "score": score,
                                      "見送り": skip, "notes": notes}
                     r["post_rule"] = {"bets": rules.make_bets(race, bi), "強い順": rules.ranking(race, bi)}
+                    r["post_big"] = {"bets": rules.big_bets(race, bi)}
                     r["posted_at"] = now().strftime("%H:%M")
                     changed = True
             # 結果: 締切8分後から
@@ -108,7 +120,7 @@ def main():
                 if res:
                     r["result"] = res
                     if not res.get("cancelled"):
-                        for kind in ("pre_cur", "pre_rule", "post_cur", "post_rule"):
+                        for kind in KINDS:
                             if kind in r:
                                 r[kind]["payout"] = judge(r[kind]["bets"], res)
                     changed = True

@@ -207,3 +207,32 @@ def danger(race: dict) -> tuple[float, list[str]]:
     if race.get("jcd") in KADO_VENUES and kado and kado["motor2"] >= 40:
         s += 5
     return round(min(s, 100), 1), notes
+
+
+def big_bets(race: dict, before: dict | None = None) -> list[str]:
+    """大穴3点: 1コースの艇を3着まで全部消す。
+
+    頭は1コース以外で一番強い艇（展示があれば展示タイムの良さも足す）。
+    頭がカド（4コース）で捲りのサイン（内凹み・伸び・カドの強い場）があれば外隣を2着、
+    それ以外は捲り差し・差しとみて残りの強い順。
+    """
+    boats = race["boats"]
+    ranks = scoring._tenji_ranks(before) if before else {}
+    course = _courses(boats, before)
+    boat_at = {c: w for w, c in course.items()}
+    sig = signals(boats, before)
+    one = boat_at.get(1, 1)
+
+    def power(w):
+        s = strength(boats[w], course[w], race.get("jcd"), ranks.get(w), sig)
+        return s + {1: 6, 2: 3}.get(ranks.get(w), 0)
+
+    cand = sorted((w for w in boats if w != one), key=power, reverse=True)
+    h = cand[0]
+    rest = [w for w in cand if w != h]
+    n = boat_at.get(course[h] + 1)
+    makuri = sig["uchi_hekomi"] or sig["nobi"] or race.get("jcd") in KADO_VENUES
+    if course[h] == 4 and makuri and n and n != one:
+        others = [w for w in rest if w != n]
+        return [f"{h}-{n}-{others[0]}", f"{h}-{n}-{others[1]}", f"{h}-{others[0]}-{n}"]
+    return [f"{h}-{rest[0]}-{rest[1]}", f"{h}-{rest[1]}-{rest[0]}", f"{h}-{rest[0]}-{rest[2]}"]
