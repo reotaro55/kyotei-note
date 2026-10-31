@@ -100,8 +100,17 @@ def main():
             # 展示後: 締切40分前〜締切まで、展示がそろったら1回だけ予想する
             if "post_cur" not in r and dl - timedelta(minutes=40) <= now() < dl:
                 bi = scraper.fetch_beforeinfo(a.jcd, int(rno), a.hd)
-                if bi["ready"]:
+                # 欠場艇がいると展示タイムが空欄になるので、スタート展示に出ていない空欄の艇は欠場とみなす
+                in_start = {v.get("boat") for v in bi["start"].values()}
+                absent = [w for w, b in bi["boats"].items() if not b["tenji_time"] and w not in in_start]
+                times = [b["tenji_time"] for w, b in bi["boats"].items() if w not in absent]
+                if len(times) >= 5 and all(times):
                     rl = scraper.fetch_racelist(a.jcd, int(rno), a.hd)
+                    for w in absent:
+                        rl["boats"].pop(w, None)
+                        bi["boats"].pop(w, None)
+                    if absent:
+                        r["欠場"] = absent
                     race = dict(rl, jcd=a.jcd, rno=int(rno))
                     score, notes, skip = scoring.post_score(rl["boats"], bi)
                     sig = rules.signals(rl["boats"], bi)
