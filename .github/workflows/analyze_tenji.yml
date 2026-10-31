@@ -1,0 +1,36 @@
+name: 展示データの検証
+on:
+  schedule:
+    - cron: "37 0 * * 1"   # 毎週月曜 9:37（日本時間）
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: reports, cancel-in-progress: false }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: sudo apt-get update -q && sudo apt-get install -y -q lhasa
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: history_cache
+          key: history-${{ github.run_id }}
+          restore-keys: history-
+      - run: git fetch origin tenji-data && git worktree add tenji_wt origin/tenji-data
+      - run: python analyze_tenji.py --tenji tenji_wt/tenji_data
+        env:
+          NOTIFY: "1"
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      - name: 結果を reports ブランチに保存
+        run: |
+          cp reports/tenji_report.txt /tmp/
+          git config user.name "kyotei-bot"
+          git config user.email "kyotei-bot@users.noreply.github.com"
+          git fetch origin reports && git switch reports
+          mkdir -p reports && cp /tmp/tenji_report.txt reports/
+          git add reports && git commit -qm "tenji report" && git push -q origin reports

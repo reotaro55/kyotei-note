@@ -1,0 +1,47 @@
+name: 展示データの収集
+on:
+  schedule:
+    - cron: "13 15 * * *"   # 毎日 0:13（日本時間）。その日の分＋まだ集めていない過去日
+    - cron: "13 3 * * *"    # 毎日 12:13（日本時間）。過去日の続き
+  workflow_dispatch:
+    inputs:
+      start: { description: "開始日 YYYY-MM-DD（空なら 2025-10-30）", default: "" }
+      end: { description: "終了日 YYYY-MM-DD（空なら今日/昨日）", default: "" }
+permissions:
+  contents: write
+concurrency: { group: tenji-data, cancel-in-progress: false }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: sudo apt-get update -q && sudo apt-get install -y -q lhasa
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: history_cache
+          key: history-${{ github.run_id }}
+          restore-keys: history-
+      - name: 集めたデータを取り出す
+        run: |
+          git fetch origin tenji-data && git worktree add tenji_wt origin/tenji-data || (git worktree add --detach tenji_wt && cd tenji_wt && git switch --orphan tenji-data)
+          mkdir -p tenji_wt/tenji_data
+      - run: |
+          # 夜0時台の実行では日本時間の「昨日」がその日の開催分
+          end="${{ inputs.end }}"; [ -z "$end" ] && end="$(TZ=Asia/Tokyo date -d yesterday +%F)"
+          start="${{ inputs.start }}"; [ -z "$start" ] && start=2025-10-30
+          python collect_tenji.py --start "$start" --end "$end" --out tenji_wt/tenji_data --newest-first --max-minutes 310
+        timeout-minutes: 325
+        continue-on-error: true
+      - name: 保存（tenji-data ブランチ）
+        if: always()
+        run: |
+          cd tenji_wt
+          git config user.name "kyotei-bot"
+          git config user.email "kyotei-bot@users.noreply.github.com"
+          git add tenji_data
+          git commit -qm "tenji update" || exit 0
+          git push -q origin HEAD:tenji-data

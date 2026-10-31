@@ -149,7 +149,7 @@ def parse_k(text: str) -> dict:
         for line in lines:
             m = K_RACE.match(line)
             if m and ("H" in line or "m" in line):
-                cur = {"tenji": {}, "course": {}, "order": {}, "trifecta": [], "cancelled": False}
+                cur = {"tenji": {}, "course": {}, "st": {}, "order": {}, "trifecta": [], "cancelled": False}
                 out[(jcd, int(m.group(1)))] = cur
                 continue
             if cur is None:
@@ -161,6 +161,11 @@ def parse_k(text: str) -> dict:
                 w = int(m.group(2))
                 cur["tenji"][w] = float(m.group(4))
                 cur["course"][w] = int(m.group(5))
+                st = m.group(6)  # 本番ST（Fは負の値、L・欠場はなし）
+                try:
+                    cur["st"][w] = -float(st[1:]) if st.startswith("F") else float(st)
+                except ValueError:
+                    pass
                 rank = _z2h(m.group(1))
                 if rank.isdigit():
                     cur["order"][int(rank)] = w
