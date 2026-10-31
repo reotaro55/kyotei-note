@@ -16,7 +16,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from kyotei import config, history, notify, scoring
+from kyotei import config, history, notify, rules, scoring
 
 PREFILTER = ("A1", "A2")
 
@@ -220,6 +220,10 @@ def main():
             x += timedelta(days=1)
         series_len[(d, jcd)] = n
     samples = []
+    # 記事ルール版との比較（同じレースで現行とルール版を並べる）
+    cmp = {k: Stat() for k in ("pre_cur", "pre_rule", "post_cur", "post_rule",
+                               "ana_cur", "ana_rule", "low_cur", "low_rule")}
+    nobi_n = [0, 0]  # 展示後: [伸びサインあり, そのうちカドが1着]
 
     d = start
     while d <= end:
@@ -236,12 +240,33 @@ def main():
                     w = scoring.ranking(r["boats"])
                     for name, f in VARIANTS.items():
                         var["all"][name].add(f(w), res)
+            # 穴狙い枠: 1号艇の危うさが高い順に1日5レース（締切15時まで）
+            ana_pool = []
+            for r in b_races:
+                if r["deadline"] > config.PRE_DEADLINE_LIMIT:
+                    continue
+                dg, _ = rules.danger(r)
+                if dg >= 30:
+                    ana_pool.append((dg, r))
+            ana_pool.sort(key=lambda x: x[0], reverse=True)
+            for dg, r in ana_pool[:5]:
+                res = results.get((r["jcd"], r["rno"]))
+                if not res or res["cancelled"] or not res["trifecta"] or len(res["tenji"]) < 6:
+                    continue
+                cmp["ana_cur"].add(scoring.pre_bets(r["boats"]), res)
+                cmp["ana_rule"].add(rules.make_bets(r, None, scoring.PRE_P_FORM_W), res)
             for r in pre:
                 res = results.get((r["jcd"], r["rno"]))
                 if not res or res["cancelled"] or not res["trifecta"] or len(res["tenji"]) < 6:
                     continue
                 samples.append(("pre", r["boats"], None, res))
                 bets = scoring.pre_bets(r["boats"])
+                rb = rules.make_bets(r, None, scoring.PRE_P_FORM_W)
+                cmp["pre_cur"].add(bets, res)
+                cmp["pre_rule"].add(rb, res)
+                if rules.venue_in1(r["jcd"]) < 52:
+                    cmp["low_cur"].add(bets, res)
+                    cmp["low_rule"].add(rb, res)
                 w = scoring.ranking(r["boats"])
                 for name, f in VARIANTS.items():
                     var["pre"][name].add(f(w), res)
@@ -261,6 +286,12 @@ def main():
                     continue
                 samples.append(("post", r["boats"], before, res))
                 bets = scoring.post_bets(r["boats"], before)
+                cmp["post_cur"].add(bets, res)
+                cmp["post_rule"].add(rules.make_bets(r, before), res)
+                sg = rules.signals(r["boats"], before)
+                if sg["nobi"]:
+                    nobi_n[0] += 1
+                    nobi_n[1] += res["order"].get(1) == sg["kado"]
                 w = scoring.ranking(r["boats"], before)
                 for name, f in VARIANTS.items():
                     var["post"][name].add(f(w), res)
@@ -283,6 +314,19 @@ def main():
     for kind, label in (("pre", "事前"), ("post", "展示後"), ("all", "厳選なし・全レース・出走表のみ")):
         out += ["", f"■買い目パターン比較（{label}・6点）"]
         out += [var[kind][name].line(name) for name in VARIANTS]
+    out += ["", "■記事ルール版との比較（同じレース・6点）"]
+    for key, label in (("pre", "事前"), ("post", "展示後（展示STなし。伸び・場・スジのみ）"),
+                       ("low", "事前のうちイン弱い場（1コース1着率52%未満）"),
+                       ("ana", "穴狙い枠（1号艇の危うさ上位5R/日）")):
+        out.append(f"  [{label}]")
+        for side, name in (("cur", "現行"), ("rule", "ルール版")):
+            st = cmp[f"{key}_{side}"]
+            if st.n:
+                out.append(f"    {name}: {st.n:,}R 的中{st.pct(st.hit, st.n)} 回収{st.pct(st.ret, st.n * 600)}"
+                           f" ／本命 回収{st.pct(st.h_ret, st.n * 300)} 穴 的中{st.pct(st.a_hit, st.n)} 回収{st.pct(st.a_ret, st.n * 300)}"
+                           f" ／1号艇1着{st.pct(st.first[1], st.n)}")
+    if nobi_n[0]:
+        out.append(f"  展示後でカドの伸びサイン（0.13秒以上速い）: {nobi_n[0]:,}R、カドが1着 {nobi_n[1] / nobi_n[0] * 100:.1f}%")
     out += strength_report(samples)
     out += ["", "■月別の回収率（事前＋展示後）"]
     for m in sorted(month):
