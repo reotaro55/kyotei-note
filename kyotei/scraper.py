@@ -4,6 +4,7 @@ HTMLの読み取り方は pyjpboatrace（MIT License, (c) 2020 hmasdev）の
 パーサーを参考にしています。サイトの見た目が変わると動かなくなるので、
 エラーが出たらまずここを疑ってください。
 """
+import math
 import re
 import time
 import unicodedata
@@ -240,9 +241,31 @@ def parse_beforeinfo(soup: BeautifulSoup) -> dict:
             }
         except (IndexError, AttributeError):
             pass
+        out["weather"].update(wind_direction(w, out["weather"].get("wind")))
     times = [b["tenji_time"] for b in out["boats"].values()]
     out["ready"] = len(times) >= 5 and all(t for t in times)
     return out
+
+
+def wind_direction(w, wind_text: str | None) -> dict:
+    """風向きアイコン is-wind1〜16（17は無風）を、レースの向きに対する風に直す。
+
+    アイコンは図の上で風が吹いていく向きの矢印。1=↑、5=→、9=↓、13=←（22.5度ずつ時計回り）。
+    図はスタートラインが縦、艇は右（1マーク側）へ進むので、→が追い風、←が向かい風。
+    tail は追い風の強さ（m/秒、マイナスなら向かい風）。
+    """
+    img = w.select_one("div.is-windDirection p")
+    m = re.search(r"is-wind(\d+)", " ".join(img.get("class", []))) if img else None
+    if not m:
+        return {}
+    n = int(m.group(1))
+    speed = _num((wind_text or "").replace("m", ""), float, 0.0) or 0.0
+    if n < 1 or n > 16 or speed == 0:
+        return {"wind_dir": n, "wind_label": "無風", "tail": 0.0}
+    tail = round(speed * math.sin(math.radians((n - 1) * 22.5)), 1)
+    label = ("追い風" if tail >= speed * 0.7 else "向かい風" if tail <= -speed * 0.7
+             else "横風" if abs(tail) < speed * 0.3 else ("斜め追い風" if tail > 0 else "斜め向かい風"))
+    return {"wind_dir": n, "wind_label": label, "tail": tail}
 
 
 def fetch_beforeinfo(jcd: str, rno: int, hd: str) -> dict:

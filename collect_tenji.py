@@ -4,7 +4,7 @@
 
 成績ファイル（K）には展示STが無いので、公式サイトの直前情報ページから取る。
 全レースが対象。1日1ファイル tenji_data/YYYYMMDD.json.gz に
-  {"jcd-rno": {"st": {"1": [艇番, ST, F?], ...}, "tenji": {"1": 6.78, ...}, "wind": "3m", "wave": "2cm"}}
+  {"jcd-rno": {"st": {"1": [艇番, ST, F?], ...}, "tenji": {"1": 6.78, ...}, "wind": "3m", "wave": "2cm", "wind_dir": 13, "tail": -3.0}}
 で保存する（キーはコース番号／艇番の文字列）。
 公式サイトへの負荷を抑えるため1秒に1回まで。既にある日は飛ばす。
 """
@@ -26,6 +26,8 @@ def pack(bi: dict) -> dict | None:
         "tenji": {str(w): b.get("tenji_time") for w, b in bi["boats"].items()},
         "wind": bi.get("weather", {}).get("wind"),
         "wave": bi.get("weather", {}).get("wave"),
+        "wind_dir": bi.get("weather", {}).get("wind_dir"),   # 1〜16（5=追い風、13=向かい風）、17=無風
+        "tail": bi.get("weather", {}).get("tail"),           # 追い風の強さ（マイナスは向かい風）
     }
 
 
