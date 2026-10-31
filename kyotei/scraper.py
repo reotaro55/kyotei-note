@@ -28,6 +28,9 @@ _session = requests.Session()
 _session.headers.update({
     "User-Agent": "Mozilla/5.0 (compatible; kyotei-note-bot/1.0)",
     "Accept-Language": "ja",
+    # 途中のキャッシュで古い直前情報（展示タイムが空のまま）が返らないように毎回取り直す
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 })
 
 
