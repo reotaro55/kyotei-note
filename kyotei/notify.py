@@ -59,10 +59,10 @@ def _label(text: str):
     _post(f"\u200b\n──────── {text} ────────")
 
 
-def send_article(article: dict, deadline: str):
-    """フォーラム用ウェブフックがあれば、記事ごとに別の投稿へまとめて送る。
-    メインのチャンネルには「届いた」という1行だけ流す。"""
-    if not config.DISCORD_FORUM_WEBHOOK_URL:
+def send_article(article: dict, deadline: str, forum: bool = False):
+    """forum=True かつフォーラム用ウェブフックがあれば、記事ごとに別の投稿へまとめて送る
+    （展示後予想だけ）。メインのチャンネルには「届いた」という1行だけ流す。"""
+    if not (forum and config.DISCORD_FORUM_WEBHOOK_URL):
         _send_article_body(article, deadline)
         return
     name = f"{deadline}締切｜{article['title']}".replace("\n", " ")[:95]

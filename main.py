@@ -142,7 +142,7 @@ def cmd_watch(hd: str, t_from: str, t_to: str, only: str = "", full: bool | None
             provisional = scoring.pre_bets(race["boats"])
             if full:
                 article = writer.build_article("post", race, final, before, scoring.tenji_ranks(before), notes)
-                notify.send_article(article, race["deadline"])
+                notify.send_article(article, race["deadline"], forum=True)
                 log(f"展示後予想 送信: {name}（{score}点）")
             else:
                 notify.send(f"🔄 追記用｜{name}（締切{race['deadline']}）\n↓ 予約版の記事の一番下に追記してください")
