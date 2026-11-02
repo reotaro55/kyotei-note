@@ -45,8 +45,6 @@ def cmd_morning(hd: str):
             [f"━━━━━━━━━━\n🆓 X無料予想用｜{free['venue']}{free['rno']}R（本日いちばん自信のあるレース）\n"
              "↓1通目を投稿 → 2通目以降をその投稿へのリプライで続けてください"]
             + writer.make_x_free(free, bets, art))
-        notify.send("📝 ↓note無料記事用（同じレースを買い目まで無料公開）")
-        notify.send_article(writer.make_note_free(free, bets, art), free["deadline"])
         ledger.record(hd, "morning", free, "pre", bets)
     for race in plan["pre"]:
         if free and race is free:
