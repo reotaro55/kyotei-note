@@ -25,6 +25,9 @@ POST_MIN_SCORE = 55
 WATCH_START_MIN = 40   # 締切の何分前から展示データを見に行くか
 WATCH_GIVEUP_MIN = 4   # 締切の何分前までに出なければ諦めるか
 WATCH_INTERVAL_SEC = 90
+# False: 展示が出たら記事をまるごと1レース1本で送る（予約版は朝に送らない）
+# True : 朝に予約版を送り、展示後は「追記用」だけ送る（旧方式）
+POST_PRESALE = False
 
 # ---- 通信 ----
 REQUEST_SLEEP_SEC = 1.0   # 公式サイトへの負荷を抑えるための待ち時間

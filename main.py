@@ -62,10 +62,13 @@ def cmd_morning(hd: str):
     if sent_races:
         notify.send("🐦 ↓X投稿用（本日のまとめ）")
         notify.send(writer.make_x_roundup(hd, sent_races))
-    presold = send_presale(hd, plan)
     lines = [f"☀️ 本日の事前予想 {sent}本を送りました。締切前に公開してください。"]
     if plan["post"]:
-        lines.append(f"\n🕐 展示後予想（予約版）{presold}本も送りました。展示が出たら追記用が届きます")
+        if config.POST_PRESALE:
+            presold = send_presale(hd, plan)
+            lines.append(f"\n🕐 展示後予想（予約版）{presold}本も送りました。展示が出たら追記用が届きます")
+        else:
+            lines.append(f"\n👁️ 展示後予想は展示が出たら1レースずつ記事が届きます（{len(plan['post'])}本予定）")
         lines += [f"・{r['deadline']} {r['venue']}{r['rno']}R" for r in plan["post"]]
     notify.send("\n".join(lines))
 
@@ -91,12 +94,16 @@ def cmd_presale(hd: str):
 
 
 # ------------------------------------------------------------------ 展示後
-def cmd_watch(hd: str, t_from: str, t_to: str, only: str = "", full: bool = False):
-    """only="13-11,13-12" で指定レースだけ監視。full=True なら追記用ではなく記事をまるごと送る。"""
+def cmd_watch(hd: str, t_from: str, t_to: str, only: str = "", full: bool | None = None):
+    """only="13-11,13-12" で指定レースだけ監視。
+    full=True: 展示が出たら記事をまるごと1レース1本で送る（既定）。False: 予約版への追記用だけ送る。"""
+    if full is None:
+        full = not config.POST_PRESALE
     plan = planner.build_plan(hd, log)
     ov = _override(hd)
     if not only and ov:
-        only, full = ov.get("only", ""), bool(ov.get("full"))
+        only = ov.get("only", "")
+        full = bool(ov["full"]) if "full" in ov else full
         log(f"今日だけの設定を適用: {ov}")
     if only:
         want = {tuple(x.split("-")) for x in only.split(",")}
@@ -136,11 +143,12 @@ def cmd_watch(hd: str, t_from: str, t_to: str, only: str = "", full: bool = Fals
             if full:
                 article = writer.build_article("post", race, final, before, scoring.tenji_ranks(before), notes)
                 notify.send_article(article, race["deadline"])
+                log(f"展示後予想 送信: {name}（{score}点）")
             else:
                 notify.send(f"🔄 追記用｜{name}（締切{race['deadline']}）\n↓ 予約版の記事の一番下に追記してください")
                 notify.send(writer.make_final_append(race, provisional, final, before, scoring.tenji_ranks(before)))
+                log(f"展示後の追記 送信: {name}（{score}点）")
             ledger.record(hd, "watch" + t_from.replace(":", ""), race, "post", final)
-            log(f"展示後の追記 送信: {name}（{score}点）")
         if pending:
             time.sleep(config.WATCH_INTERVAL_SEC)
     log("監視終了")
@@ -296,7 +304,10 @@ def main():
     p.add_argument("--from", dest="t_from", default="00:00")
     p.add_argument("--to", dest="t_to", default="24:00")
     p.add_argument("--only", default="", help="例: 13-11,13-12（場コード-レース番号）")
-    p.add_argument("--full", action="store_true", help="展示後に記事をまるごと送る")
+    p.add_argument("--full", dest="full", action="store_const", const=True, default=None,
+                   help="展示後に記事をまるごと送る（既定）")
+    p.add_argument("--append", dest="full", action="store_const", const=False,
+                   help="予約版への追記用だけ送る（旧方式）")
     p.add_argument("--venue", default="", help="resend用: 場名（例: 尼崎）")
     p.add_argument("--from-rno", type=int, default=1, help="resend用: 何Rから")
     a = p.parse_args()
