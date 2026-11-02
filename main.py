@@ -285,7 +285,7 @@ def cmd_test():
                       w: {"waku": w, "name": f"サンプル選手{w}", "class": "A1" if w == 1 else "B1",
                           "win_rate": 7.5 - w * 0.5, "local_win_rate": 7.0, "avg_st": 0.15,
                           "motor2": 40.0 - w, "F": 0} for w in range(1, 7)}}
-        notify.send("👇 貼り付け練習用のサンプル記事です（noteで余白の位置に有料ラインが収まるか確認してください）")
+        notify.send("👇 貼り付け練習用のサンプル記事です（有料ラインは「🔐 ここから有料予想」の行の下に入れてください）")
         notify.send_article(writer.build_article("pre", sample, scoring.pre_bets(sample["boats"])), "10:00", forum=True)
         facts = writer._facts("pre", sample, scoring.pre_bets(sample["boats"]))
         if writer._llm(facts):

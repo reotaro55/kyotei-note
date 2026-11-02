@@ -1,12 +1,12 @@
 """DiscordでiPhoneに届ける。
 
 1記事を「案内」「タイトル」「本文」の3メッセージで送る。
-本文は無料部分と有料部分の間に空行を入れてあり、noteに丸ごと貼ると
-有料ラインがその余白に収まる。
+本文は無料部分と有料部分を詰めて送る（noteでは貼り付け後に有料ラインを手動で入れる。
+「🔐 ここから有料予想」の行の下が目印）。
 """
 import time
 
-GAP = "\n" * 6   # 無料部分と有料部分の間の余白（有料ラインがここに収まる）
+GAP = "\n\n"   # 無料部分と有料部分の間（詰めて送る。有料ラインはnoteで手動）
 
 import requests
 
@@ -83,11 +83,11 @@ def _send_article_body(article: dict, deadline: str):
     send(f"━━━━━━━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}")
     _label("📌 タイトル")
     send(article["title"])
-    _label("📄 本文（無料＋余白＋有料）")
+    _label("📄 本文（無料＋有料）")
     body = article["free"] + GAP + article["paid"]
     if len(body) <= 1900:
         _post(body)
-    else:  # 長すぎるときだけ、余白の位置で2通に分ける
+    else:  # 長すぎるときだけ、無料と有料の境目で2通に分ける
         send(article["free"])
         _label("📄 本文の続き（有料部分）")
         send(article["paid"])
