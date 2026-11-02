@@ -316,7 +316,11 @@ def build_article(kind, race, bets, before=None, tenji_ranks=None, post_notes=No
     return {"title": make_title(kind, race), "price": price, "free": free_part, "paid": paid_part,
             "tags": make_tags(kind, race), "x": make_x_post(kind, race, hook, price),
             "kanpyo": [clean_ng(str(c)).strip() for c in list(t.get("kanpyo") or [])[:6]],
-            "tenkai": [clean_ng(str(c)).strip() for c in t["tenkai"]]}
+            "tenkai": [clean_ng(str(c)).strip() for c in t["tenkai"]],
+            # 無料記事・X無料予想で使う部品
+            "hook": clean_ng(hook), "lines": [clean_ng(str(x)).strip() for x in lines],
+            "top": top, "honmei": clean_ng(t["honmei"]), "ana": clean_ng(t["ana"]),
+            "data": _data_table(facts)}
 
 
 def x_len(text: str) -> int:
@@ -444,18 +448,24 @@ def make_x_free(race: dict, bets: dict, article: dict) -> list[str]:
     """X用の無料予想（スレッド）。1通目=買い目、2通目以降=寸評。"""
     hd = race.get("hd", "")
     date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
-    main = "\n".join([
-        f"🆓【艇眼・本日の無料予想】",
-        f"{date}{race.get('grade', '')}{race['venue']}{race['rno']}R【締切{race['deadline']}】",
-        "",
-        "🎯本命 " + " ".join(compact(bets["本命"])),
-        "💣穴 " + " ".join(compact(bets["穴"])),
-        "",
-        (article.get("tenkai") or [""])[0],
-        "",
-        "寸評はリプ欄👇",
-        "#競艇予想 #ボートレース #無料予想",
-    ])
+    def build(tenkai: bool) -> str:
+        return "\n".join([
+            f"⚡{article['hook']}" if article.get("hook") else "",
+            "",
+            f"🆓【艇眼・本日の無料予想】",
+            f"{date}{race.get('grade', '')}{race['venue']}{race['rno']}R【締切{race['deadline']}】",
+            "",
+            "🎯本命 " + " ".join(compact(bets["本命"])),
+            "💣穴 " + " ".join(compact(bets["穴"])),
+            "",
+            (article.get("tenkai") or [""])[0] if tenkai else "",
+            "",
+            "寸評はリプ欄👇",
+            "#競艇予想 #ボートレース #無料予想",
+        ]).strip().replace("\n\n\n", "\n\n")
+    main = build(True)
+    if x_len(main) > 280:  # 入りきらないときは展開の一文を外す
+        main = build(False)
     posts = [main]
     cur = []
     for i, c in enumerate(article.get("kanpyo") or []):
@@ -472,3 +482,33 @@ def make_x_free(race: dict, bets: dict, article: dict) -> list[str]:
             posts.append("\n".join(cur))
         posts.append(tail)
     return posts
+
+
+def make_note_free(race: dict, bets: dict, article: dict) -> dict:
+    """noteの無料記事（X無料予想と同じレースを、買い目まで全部無料で公開）。
+    フックで引き込み、最後に有料記事へ誘導する。"""
+    hd = race.get("hd", "")
+    date = f"{int(hd[4:6])}/{int(hd[6:8])} " if len(hd) == 8 else ""
+    name = f"{race.get('grade', '')}{race['venue']}{race['rno']}R"
+    free_lines = [f"⚡ {article['hook']}"] + list(article.get("lines") or []) + [
+        "🆓 本日いちばん自信のある1レースを、買い目まで全部無料で公開。"]
+    body = "\n\n".join([
+        "🔥 艇眼｜本日の無料予想",
+        "\n".join(article.get("top") or [f"🚤 {date}{race['venue']}{race['rno']}R"]),
+        _para(free_lines),
+        "🔥 展開予想",
+        _para(article.get("tenkai") or []),
+        "📝 各艇寸評\n" + "\n".join(f"{'①②③④⑤⑥'[i]}{c}" for i, c in enumerate(article.get("kanpyo") or [])),
+        "🎯 本命（3点）\n" + "\n".join(compact(bets["本命"])),
+        article.get("honmei", ""),
+        "💣 穴（3点）\n" + "\n".join(compact(bets["穴"])),
+        article.get("ana", ""),
+        "📊 データ\n" + article.get("data", ""),
+        f"🔥 ほかの厳選レース（事前予想{config.PRICE_PRE}円・展示後予想{config.PRICE_POST}円）も公開中。"
+        "プロフィールからどうぞ。",
+        config.DISCLAIMER,
+    ])
+    tags = " ".join("#" + t for t in BASE_TAGS + [f"{race['venue']}競艇", "無料予想", "艇眼"])
+    return {"title": f"🆓🚤【艇眼・無料】{date}{name}｜本日いちばん自信のあるレース⚡",
+            "price": 0, "free": body, "paid": "", "tags": tags}
+

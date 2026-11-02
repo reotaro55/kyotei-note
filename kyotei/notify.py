@@ -80,17 +80,19 @@ def send_article(article: dict, deadline: str, forum: bool = False):
 
 
 def _send_article_body(article: dict, deadline: str):
-    send(f"━━━━━━━━━━━━━━━━\n📝 新しい記事｜{article['price']}円｜締切 {deadline}")
+    price = f"{article['price']}円" if article["price"] else "無料記事"
+    send(f"━━━━━━━━━━━━━━━━\n📝 新しい記事｜{price}｜締切 {deadline}")
     _label("📌 タイトル")
     send(article["title"])
-    _label("📄 本文（無料＋有料）")
-    body = article["free"] + GAP + article["paid"]
+    _label("📄 本文（無料＋有料）" if article["paid"] else "📄 本文（全部無料）")
+    body = article["free"] + (GAP + article["paid"] if article["paid"] else "")
     if len(body) <= 1900:
         _post(body)
     else:  # 長すぎるときだけ、無料と有料の境目で2通に分ける
         send(article["free"])
-        _label("📄 本文の続き（有料部分）")
-        send(article["paid"])
+        if article["paid"]:
+            _label("📄 本文の続き（有料部分）")
+            send(article["paid"])
     if article.get("tags"):
         _label("#️⃣ ハッシュタグ")
         send(article["tags"])
