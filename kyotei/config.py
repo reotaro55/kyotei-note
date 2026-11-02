@@ -38,6 +38,8 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "") or "gpt-6-luna"
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 # フォーラムチャンネルのウェブフック。設定すると展示後予想を1本ずつ別の投稿（スレッド）に分けて送る（事前予想はいつものチャンネル）
 DISCORD_FORUM_WEBHOOK_URL = os.environ.get("DISCORD_FORUM_WEBHOOK_URL", "")
+# 無料予想（X投稿用）を送るチャンネルのウェブフック。未設定ならいつものチャンネル
+DISCORD_FREE_WEBHOOK_URL = os.environ.get("DISCORD_FREE_WEBHOOK_URL", "")
 
 # ---- 記事末尾に必ず付ける注意書き ----
 DISCLAIMER = (

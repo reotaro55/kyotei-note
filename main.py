@@ -41,10 +41,10 @@ def cmd_morning(hd: str):
     if free:
         bets = scoring.pre_bets(free["boats"])
         art = writer.build_article("pre", free, bets)
-        notify.send(f"━━━━━━━━━━\n🆓 X無料予想用｜{free['venue']}{free['rno']}R（本日いちばん自信のあるレース）\n"
-                    "↓1通目を投稿 → 2通目以降をその投稿へのリプライで続けてください")
-        for post in writer.make_x_free(free, bets, art):
-            notify.send(post)
+        notify.send_free(
+            [f"━━━━━━━━━━\n🆓 X無料予想用｜{free['venue']}{free['rno']}R（本日いちばん自信のあるレース）\n"
+             "↓1通目を投稿 → 2通目以降をその投稿へのリプライで続けてください"]
+            + writer.make_x_free(free, bets, art))
         notify.send("📝 ↓note無料記事用（同じレースを買い目まで無料公開）")
         notify.send_article(writer.make_note_free(free, bets, art), free["deadline"])
         ledger.record(hd, "morning", free, "pre", bets)
@@ -280,6 +280,8 @@ def _recompute_entries(hd: str) -> list[dict]:
 
 def cmd_test():
     notify.send("✅ テスト送信です。この通知が届けば設定OK！")
+    if config.DISCORD_FREE_WEBHOOK_URL:
+        notify.send_free(["✅ 無料予想チャンネルへのテスト送信です。ここに届けば設定OK！"])
     log("Discordにテスト送信しました")
     if config.OPENAI_API_KEY:
         sample = {"venue": "サンプル", "rno": 1, "deadline": "10:00", "title": "", "score": 80,

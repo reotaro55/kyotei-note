@@ -54,6 +54,22 @@ def send(text: str):
         text = text[cut:].lstrip("\n")
 
 
+def send_free(texts: list[str]):
+    """無料予想用のチャンネルに送る（未設定・失敗時はいつものチャンネル）。"""
+    if config.DISCORD_FREE_WEBHOOK_URL:
+        _target.update(url=config.DISCORD_FREE_WEBHOOK_URL, thread_id=None, thread_name=None)
+        try:
+            for t in texts:
+                send(t)
+            return
+        except Exception as e:
+            print(f"無料予想チャンネルへの送信失敗のため通常送信に切り替え: {e}")
+        finally:
+            _target.update(url=None, thread_id=None, thread_name=None)
+    for t in texts:
+        send(t)
+
+
 def _label(text: str):
     """コピーしやすいよう、各パーツの前に区切りを入れる。"""
     _post(f"\u200b\n──────── {text} ────────")
